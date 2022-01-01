@@ -1,8 +1,2 @@
-/CMakeFiles
-/CMakeCache.txt
-/cmake_install.cmake
-/src/CMakeFiles
-/src/Makefile
-/src/cmake_install.cmake
-/Makefile
-/src/bsrep
+/build
+/.vscode
