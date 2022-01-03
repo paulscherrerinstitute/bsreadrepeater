@@ -5,6 +5,7 @@
 
 struct bsr_poller {
     void *poller;
+    void *ctx;
 };
 
 void cleanup_bsr_poller(struct bsr_poller *k);

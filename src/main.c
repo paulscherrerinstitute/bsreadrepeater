@@ -22,22 +22,15 @@ void cleanup_zmq_context(void **k) {
         if (0) {
             ec = zmq_ctx_term(*k);
             if (ec != 0) {
-                fprintf(stderr, "error zmq_ctx_term %d\n", ec);
+                fprintf(stderr, "ERROR zmq_ctx_term %d\n", ec);
             }
         }
         ec = zmq_ctx_destroy(*k);
-        fprintf(stderr, "error zmq_ctx_destroy %d\n", ec);
+        if (ec != 0) {
+            fprintf(stderr, "ERROR zmq_ctx_destroy %d\n", ec);
+        }
         *k = NULL;
     }
-}
-
-void to_hex(char *buf, uint8_t *in, int n) {
-    char *p1 = buf;
-    for (int i = 0; i < n; i += 1) {
-        snprintf(p1, 3, "%02x", in[i]);
-        p1 += 2;
-    }
-    *p1 = 0;
 }
 
 // Common options for sockets.
@@ -77,15 +70,13 @@ struct CommandHandler {
     struct bsr_cmdchn cmdchn;
 };
 
-ERRT command_handler_handle_msg(void) { return 0; }
-
 struct SourceHandler {
     int m1;
 };
 
 enum HandlerKind {
-    CommandHandler,
-    SourceHandler,
+    CommandHandler = 1,
+    SourceHandler = 2,
 };
 
 union HandlerUnion {
@@ -98,14 +89,42 @@ struct Handler {
     union HandlerUnion handler;
 };
 
+void cleanup_struct_Handler(struct Handler *self) {
+    int ec;
+    if (self != NULL && self->kind != 0) {
+        switch (self->kind) {
+        case CommandHandler: {
+            struct bsr_cmdchn *h = &self->handler.cmdh.cmdchn;
+            ec = zmq_close(h->socket);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR can not close bsr_cmdchn socket\n");
+            }
+            break;
+        }
+        case SourceHandler: {
+            break;
+        }
+        default: {
+            fprintf(stderr, "cleanup_struct_Handler unknown kind %d\n",
+                    self->kind);
+        }
+        }
+        self->kind = 0;
+    }
+}
+
 ERRT handlers_init(struct Handler *self, struct bsr_poller *poller) {
+    fprintf(stderr, "handlers_init REMOVE\n");
+    exit(-1);
     fprintf(stderr, "handlers_init %d\n", self->kind);
     switch (self->kind) {
     case CommandHandler: {
         struct CommandHandler *h = &self->handler.cmdh;
+        h = h;
         fprintf(stderr, "handlers_init CommandHandler\n");
         int ec;
-        ec = zmq_poller_add(poller->poller, h->cmdchn.socket, self, ZMQ_POLLIN);
+        poller = poller;
+        // ec = bsr_cmdchn_init(&h->cmdchn, poller->poller, self);
         NZRET(ec);
         break;
     }
@@ -116,26 +135,37 @@ ERRT handlers_init(struct Handler *self, struct bsr_poller *poller) {
         return -1;
         break;
     }
+    default: {
+        fprintf(stderr, "handlers_init unknown kind %d\n", self->kind);
+    }
     }
     return 0;
 }
 
-ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller) {
-    fprintf(stderr, "handlers_handle_msg  kind %d  self %p\n", self->kind,
-            (void *)self);
+ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller,
+                         int *cmdret) {
+    int ec;
+    if (0) {
+        fprintf(stderr, "handlers_handle_msg  kind %d  self %p\n", self->kind,
+                (void *)self);
+    };
     switch (self->kind) {
     case CommandHandler: {
         struct CommandHandler *h = &self->handler.cmdh;
-        fprintf(stderr, "handlers_handle_msg CommandHandler\n");
-        bsr_cmdchn_handle_event(&h->cmdchn, poller);
+        ec = bsr_cmdchn_handle_event(&h->cmdchn, poller, cmdret);
+        NZRET(ec);
         break;
     }
     case SourceHandler: {
         struct SourceHandler *h = NULL;
         h = h;
-        fprintf(stderr, "todo SourceHandler\n");
+        fprintf(stderr, "TODO handlers_handle_msg SourceHandler\n");
         return -1;
         break;
+    }
+    default: {
+        fprintf(stderr, "ERROR handlers_handle_msg unhandled kind %d\n",
+                self->kind);
     }
     }
     return 0;
@@ -150,22 +180,26 @@ int main(int argc, char **argv) {
     NULLRET(ctx);
 
     struct bsr_poller poller __attribute__((cleanup(cleanup_bsr_poller))) = {0};
+    poller.ctx = ctx;
     poller.poller = zmq_poller_new();
-    fprintf(stderr, "poller %p\n", poller.poller);
 
-    struct bsr_cmdchn cmdchn __attribute__((cleanup(cleanup_bsr_cmdchn))) = {0};
-    ec = bsr_cmdchn_bind(&cmdchn, ctx, 4242);
-    NZRET(ec);
+    // struct bsr_cmdchn cmdchn __attribute__((cleanup(cleanup_bsr_cmdchn))) =
+    // {0};
+    // ec = bsr_cmdchn_bind(&cmdchn, ctx, 4242);
+    // NZRET(ec);
 
-    struct Handler cmdhandler = {
-        .kind = CommandHandler,
-        .handler =
-            {
-                .cmdh = {.cmdchn = cmdchn},
-            },
-    };
-    ec = handlers_init(&cmdhandler, &poller);
+    struct Handler cmdhandler
+        __attribute__((cleanup(cleanup_struct_Handler))) = {
+            .kind = CommandHandler,
+            .handler =
+                {
+                    .cmdh = {.cmdchn = {0}},
+                },
+        };
+    ec = bsr_cmdchn_init(&cmdhandler.handler.cmdh.cmdchn, &poller, 4242,
+                         &cmdhandler);
     NZRET(ec);
+    fprintf(stderr, "bsr_cmdchn_init\n");
 
     void *timer_tx = zmq_socket(ctx, ZMQ_PUSH);
     void *timer_rx = zmq_socket(ctx, ZMQ_PULL);
@@ -226,7 +260,11 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr, "enter loop\n");
-    for (int i4 = 0; i4 < 16; i4 += 1) {
+    int run_poll_loop = 1;
+    for (int i4 = 0; i4 < 100 && run_poll_loop == 1; i4 += 1) {
+        if (0) {
+            fprintf(stderr, "polling...\n");
+        };
         int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 3000);
         if (nev == -1) {
             if (errno == EAGAIN) {
@@ -255,22 +293,21 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "Received: [%.6s]\n", buf);
                 did_recv += 1;
             } else if (ev->user_data != NULL) {
-                fprintf(stderr, "user-data\n");
-                ec = handlers_handle_msg(ev->user_data, &poller);
+                // fprintf(stderr, "handle via user-data\n");
+                int cmdret = 0;
+                ec = handlers_handle_msg(ev->user_data, &poller, &cmdret);
+                if (ec != 0) {
+                    fprintf(stderr, "handle via user-data GOT %d\n", ec);
+                };
                 NZRET(ec);
-            }
-            if (0 && ev->socket == cmdchn.socket &&
-                (ev->events & ZMQ_POLLIN) != 0) {
-                fprintf(stderr, "cmdchn POLLIN\n");
-                uint8_t buf[16];
-                int n = zmq_recv(ev->socket, buf, 16, 0);
-                if (n == -1) {
-                    fprintf(stderr, "ERROR cmd recv %d\n", n);
-                    return -1;
+                if (cmdret == 1) {
+                    fprintf(stderr, "got msg to exit\n");
+                    run_poll_loop = 0;
+                    break;
                 }
-                char sb[64];
-                to_hex(sb, buf, n);
-                fprintf(stderr, "Received: %d (%s) [%.*s]\n", n, sb, n, buf);
+            } else {
+                fprintf(stderr, "ERROR can not handle event\n");
+                return -1;
             }
         }
         if (did_send >= 1) {

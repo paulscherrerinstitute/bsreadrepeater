@@ -5,6 +5,10 @@ main.c
 bsr_poller.c
 ../include/bsreadrepeater/bsr_cmdchn.h
 bsr_cmdchn.c
+../include/bsreadrepeater/bsr_chnhandler.h
+bsr_chnhandler.c
+../include/bsreadrepeater/hex.h
+hex.c
 )
 target_compile_options(bsrep PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(bsrep PRIVATE "../include/bsreadrepeater")
