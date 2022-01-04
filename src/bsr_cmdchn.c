@@ -20,8 +20,7 @@ void cleanup_bsr_cmdchn(struct bsr_cmdchn *k) {
     }
 }
 
-int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller,
-                    int port, void *user_data) {
+int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port) {
     int ec;
     self->state = RECV;
     // self->socket = zmq_socket(poller->ctx, ZMQ_STREAM);
@@ -45,22 +44,20 @@ int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller,
     return 0;
 }
 
-int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
-                            int *cmdret) {
+int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd) {
     int ec;
     size_t const N = 64;
     uint8_t buf[N];
     if (self->state == RECV) {
         int do_recv = 1;
         while (do_recv) {
-            int n = zmq_recv(self->socket, buf, N, ZMQ_NOBLOCK);
+            int n = zmq_recv(self->socket, buf, N, ZMQ_DONTWAIT);
             if (n == -1) {
                 if (errno == EAGAIN) {
                     fprintf(stderr, "no more\n");
                     break;
                 } else {
-                    fprintf(stderr, "error in recv %d  %s\n", errno,
-                            zmq_strerror(errno));
+                    fprintf(stderr, "error in recv %d  %s\n", errno, zmq_strerror(errno));
                     return -1;
                 }
             } else {
@@ -68,21 +65,23 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                 to_hex(sb, buf, n);
                 fprintf(stderr, "Received: %d (%s) [%.*s]\n", n, sb, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
-                    *cmdret = 1;
-                }
+                    cmd->ty = CmdExit;
+                } else if (n == 3 && memcmp("add", buf, n) == 0) {
+                    cmd->ty = CmdAdd;
+                } else if (n == 6 && memcmp("remove", buf, n) == 0) {
+                    cmd->ty = CmdRemove;
+                };
                 // TODO only try more if multipart. REQ must be matched by
                 // REP.
                 do_recv = 0;
                 self->state = SEND;
-                ec = zmq_poller_modify(poller->poller, self->socket,
-                                       ZMQ_POLLOUT);
+                ec = zmq_poller_modify(poller->poller, self->socket, ZMQ_POLLOUT);
                 // TODO capture zmq error details. caller does not know whether
                 // some returned error means that `errno` is set to some valid
                 // value, and also not whether `errnor` might point to some
                 // zmq-specific error-code.
                 if (ec == -1) {
-                    fprintf(stderr, "error: %d  %s\n", errno,
-                            zmq_strerror(errno));
+                    fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));
                 };
                 NZRET(ec);
             }
@@ -92,9 +91,10 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
         if (n <= 0) {
             return -1;
         };
-        n = zmq_send(self->socket, buf, n, 0);
+        n = zmq_send(self->socket, buf, n, ZMQ_DONTWAIT);
         if (n == -1) {
             if (errno == EAGAIN) {
+                // TODO should not happen with REQ/REP.
                 fprintf(stderr, "EAGAIN on send\n");
                 return 0;
             } else {

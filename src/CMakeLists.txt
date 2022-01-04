@@ -3,6 +3,8 @@ add_executable(bsrep
 main.c
 ../include/bsreadrepeater/bsr_poller.h
 bsr_poller.c
+../include/bsreadrepeater/bsr_sockhelp.h
+bsr_sockhelp.c
 ../include/bsreadrepeater/bsr_cmdchn.h
 bsr_cmdchn.c
 ../include/bsreadrepeater/bsr_chnhandler.h

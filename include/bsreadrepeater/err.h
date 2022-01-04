@@ -2,14 +2,26 @@
 
 typedef int ERRT;
 
-// Helper to return on error.
-#define NZRET(ec)                                                              \
-    if ((ec) != 0) {                                                           \
-        return ec;                                                             \
+// Helpers to return on error.
+
+#define NZRET(ec)                                                                                                      \
+    if ((ec) != 0) {                                                                                                   \
+        return ec;                                                                                                     \
     }
 
-// Helper to return on error.
-#define NULLRET(ptr)                                                           \
-    if ((ptr) == NULL) {                                                       \
-        return -1;                                                             \
+#define NULLRET(ptr)                                                                                                   \
+    if ((ptr) == NULL) {                                                                                               \
+        return -1;                                                                                                     \
+    }
+
+#define ZMQ_NEGONE(ec)                                                                                                 \
+    if ((ec) == -1) {                                                                                                  \
+        fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));                                                \
+        return -1;                                                                                                     \
+    }
+
+#define ZMQ_NULLRET(ptr)                                                                                               \
+    if ((ptr) == NULL) {                                                                                               \
+        fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));                                                \
+        return -1;                                                                                                     \
     }
