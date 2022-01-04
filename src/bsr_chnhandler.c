@@ -16,6 +16,11 @@ enum HandlerState {
     RECV = 1,
 };
 
+struct sockout {
+    void *sock;
+    int in_multipart;
+};
+
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     fprintf(stderr, "INFO cleanup_bsr_chnhandler\n");
     int ec;
@@ -32,7 +37,8 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
         GList *it = self->socks_out;
         while (it != NULL) {
             fprintf(stderr, "remove out sock it %p\n", (void *)it);
-            void *sock = it->data;
+            struct sockout *data = it->data;
+            void *sock = data->sock;
             ec = zmq_poller_remove(self->poller->poller, sock);
             if (ec == -1) {
                 fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_poller_remove out %d\n", ec);
@@ -41,6 +47,7 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
             if (ec == -1) {
                 fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_close out %d %s\n", errno, zmq_strerror(errno));
             }
+            free(data);
             it->data = NULL;
             it = it->next;
         }
@@ -55,7 +62,6 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->poller = poller;
     self->user_data = user_data;
     self->state = RECV;
-    self->in_multipart = 0;
     self->sentok = 0;
     self->eagain = 0;
     self->socks_out = NULL;
@@ -100,8 +106,11 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, int port) {
     ZMQ_NEGONE(ec);
     ec = zmq_poller_add(self->poller->poller, sock, self->user_data, 0);
     ZMQ_NEGONE(ec);
-    self->socks_out = g_list_append(self->socks_out, sock);
+    struct sockout *data = malloc(sizeof(struct sockout));
+    data->sock = sock;
     sock = NULL;
+    data->in_multipart = 0;
+    self->socks_out = g_list_append(self->socks_out, data);
     return 0;
 }
 
@@ -118,8 +127,8 @@ ERRT bsr_chnhandler_remove_nth_out(struct bsr_chnhandler *self, int ix) {
     int ec;
     GList *it = g_list_nth(self->socks_out, ix);
     if (it != NULL) {
-        void *sock = it->data;
-        ec = bsr_chnhandler_close_sock(self, sock);
+        struct sockout *data = it->data;
+        ec = bsr_chnhandler_close_sock(self, data->sock);
         NZRET(ec);
         self->socks_out = g_list_remove(self->socks_out, it->data);
     };
@@ -185,13 +194,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 }
                 GList *it = self->socks_out;
                 while (it != NULL) {
-                    void *so = it->data;
+                    struct sockout *data = it->data;
+                    void *so = data->sock;
                     int n2 = zmq_send(so, self->buf, n, sndflags);
                     if (n2 == -1) {
                         if (errno == EAGAIN) {
-                            if (self->in_multipart == 1) {
-                                fprintf(stderr, "ERROR zmq contract violation: error while inside multipart message\n");
-                                return -1;
+                            if (data->in_multipart == 1) {
+                                self->eagain_multipart += 1;
                             } else {
                                 // Output can't keep up. Drop message.
                                 self->eagain += 1;
@@ -205,13 +214,12 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         return -1;
                     } else {
                         // Message is accepted by zmq.
-                        if (more == 1) {
-                            self->in_multipart = 1;
-                        } else {
-                            self->in_multipart = 0;
-                        };
-                        // fprintf(stderr, "send done\n");
                         self->sentok += 1;
+                        if (more == 1) {
+                            data->in_multipart = 1;
+                        } else {
+                            data->in_multipart = 0;
+                        };
                     };
                     it = it->next;
                 }
@@ -226,7 +234,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
     uint64_t dt =
         (ts.tv_sec - self->last_print_ts.tv_sec) * 1000 + (ts.tv_nsec - self->last_print_ts.tv_nsec) / 1000000;
     if (dt > 1500) {
-        fprintf(stderr, "sent: %" PRIu64 "  busy: %" PRIu64 "\n", self->sentok, self->eagain);
+        fprintf(stderr, "sent: %" PRIu64 "  busy: %" PRIu64 "  busy-in-mp: %" PRIu64 "\n", self->sentok, self->eagain,
+                self->eagain_multipart);
         self->last_print_ts = ts;
     };
     return 0;

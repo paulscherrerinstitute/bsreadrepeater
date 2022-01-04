@@ -11,11 +11,11 @@ struct bsr_chnhandler {
     char *buf;
     int buflen;
     void *sock_inp;
-    int in_multipart;
     GList *socks_out;
     struct timespec last_print_ts;
     uint64_t sentok;
     uint64_t eagain;
+    uint64_t eagain_multipart;
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);

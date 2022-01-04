@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <hex.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum HandlerState {
@@ -66,8 +67,13 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
                 fprintf(stderr, "Received: %d (%s) [%.*s]\n", n, sb, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
-                } else if (n == 3 && memcmp("add", buf, n) == 0) {
+                } else if (n >= 5 && memcmp("add", buf, 3) == 0) {
                     cmd->ty = CmdAdd;
+                    char *p2 = (char *)buf + n;
+                    errno = 0;
+                    int port = strtol((char *)buf + 4, &p2, 10);
+                    fprintf(stderr, "port %d\n", port);
+                    cmd->var.add.port = port;
                 } else if (n == 6 && memcmp("remove", buf, n) == 0) {
                     cmd->ty = CmdRemove;
                 };

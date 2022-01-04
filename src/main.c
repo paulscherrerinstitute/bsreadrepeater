@@ -270,7 +270,7 @@ int main(int argc, char **argv) {
                     break;
                 } else if (cmd.ty == CmdAdd) {
                     fprintf(stderr, "add output\n");
-                    ec = bsr_chnhandler_add_out(&chn1.handler.src, 50001);
+                    ec = bsr_chnhandler_add_out(&chn1.handler.src, cmd.var.add.port);
                     NZRET(ec);
                 } else if (cmd.ty == CmdRemove) {
                     fprintf(stderr, "remove output\n");

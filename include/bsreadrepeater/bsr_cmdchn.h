@@ -9,8 +9,17 @@ enum CommandType {
     CmdRemove = 3,
 };
 
+struct CommandAdd {
+    int port;
+};
+
+union CommandUnion {
+    struct CommandAdd add;
+};
+
 struct ReceivedCommand {
     enum CommandType ty;
+    union CommandUnion var;
 };
 
 struct bsr_cmdchn {
