@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.17.3)
-project(bsreadrepeater)
+project(bsreadrepeater LANGUAGES C)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # TODO
-set(Pkg1_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../pkg1")
-find_package(Pkg1 REQUIRED)
-message("Pkg1 ${Pkg1_DIR}")
-message("Pkg1 ${CMAKE_CURRENT_SOURCE_DIR}")
+#set(Pkg1_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../pkg1")
+#find_package(Pkg1 REQUIRED)
+#message("Pkg1 ${Pkg1_DIR}")
+#message("Pkg1 ${CMAKE_CURRENT_SOURCE_DIR}")
 
-# TODO
+# TODO rhel libzmq is not good enough.
 set(ZeroMQ_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../software/zeromq-4.3.4/build")
 find_package(ZeroMQ REQUIRED)
 message("ZeroMQ ${ZeroMQ_DIR}")

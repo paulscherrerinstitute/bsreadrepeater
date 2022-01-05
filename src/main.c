@@ -1,13 +1,17 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
 #include <bsr_cmdchn.h>
 #include <bsr_poller.h>
-#include <bsreadrepeater.h>
 #include <err.h>
 #include <errno.h>
 #include <glib.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <zmq.h>
 
 void cleanup_g_string(GString **k) {
@@ -175,6 +179,28 @@ ERRT handler_list_add(struct HandlerList *self, struct Handler *handler) {
     return 0;
 }
 
+ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler) {
+    cleanup_struct_Handler(handler);
+    self->list = g_list_remove(self->list, handler);
+    // TODO check that HandlerList owns the contained struct Handler.
+    free(handler);
+    return 0;
+}
+
+struct Handler *handler_list_find_by_input_addr_2(struct HandlerList *self, char const *addr) {
+    GList *it = self->list;
+    while (it != NULL) {
+        struct Handler *handler = it->data;
+        if (handler->kind == SourceHandler) {
+            if (strncmp(handler->handler.src.addr_inp, addr, ADDR_CAP) == 0) {
+                return handler;
+            };
+        };
+        it = it->next;
+    }
+    return NULL;
+}
+
 struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr) {
     GList *it = self->list;
     while (it != NULL) {
@@ -239,14 +265,14 @@ int main2(int argc, char **argv) {
     }
 
     int run_poll_loop = 1;
-    for (int i4 = 0; i4 < 100000 && run_poll_loop == 1; i4 += 1) {
+    for (uint64_t i4 = 0; i4 <= UINT64_MAX && run_poll_loop == 1; i4 += 1) {
         if (0) {
             fprintf(stderr, "polling...\n");
         };
-        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 3000);
+        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 10000);
         if (nev == -1) {
             if (errno == EAGAIN) {
-                fprintf(stderr, "Poller EAGAIN\n");
+                fprintf(stderr, "Nothing to do\n");
             } else {
                 fprintf(stderr, "Poller error: %d\n", nev);
                 return -1;

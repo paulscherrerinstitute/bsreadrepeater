@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #include <bsr_str.h>
 
 ERRT bsr_str_split(char *str, int n, struct SplitMap *res) {

@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_poller.h>
@@ -17,6 +23,7 @@ struct bsr_chnhandler {
     void *sock_inp;
     GList *socks_out;
     struct timespec last_print_ts;
+    uint64_t received;
     uint64_t sentok;
     uint64_t eagain;
     uint64_t eagain_multipart;

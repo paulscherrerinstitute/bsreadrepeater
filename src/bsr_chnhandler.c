@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #include <bsr_chnhandler.h>
 #include <bsr_sockhelp.h>
 #include <err.h>
@@ -9,12 +15,12 @@
 #include <time.h>
 
 #define PRINT_RECEIVED 0
-#define RCVHWM 100
+#define RCVHWM 128
 #define RCVBUF (1024 * 128)
-#define SNDHWM 100
+#define SNDHWM 128
 #define SNDBUF (1024 * 128)
 
-static int const NBUF = 1024;
+static int const NBUF = 1024 * 128;
 
 enum HandlerState {
     RECV = 1,
@@ -80,6 +86,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     strncpy(self->addr_inp, addr_inp, ADDR_CAP);
     self->addr_inp[ADDR_CAP - 1] = 0;
     self->state = RECV;
+    self->received = 0;
     self->sentok = 0;
     self->eagain = 0;
     self->eagain_multipart = 0;
@@ -200,6 +207,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     return -1;
                 };
             } else {
+                self->received += 1;
                 int more;
                 {
                     size_t opt_val_len = sizeof(more);
@@ -266,8 +274,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
     uint64_t dt =
         (ts.tv_sec - self->last_print_ts.tv_sec) * 1000 + (ts.tv_nsec - self->last_print_ts.tv_nsec) / 1000000;
     if (dt > 1500) {
-        fprintf(stderr, "sent: %" PRIu64 "  busy: %" PRIu64 "  busy-in-mp: %" PRIu64 "\n", self->sentok, self->eagain,
-                self->eagain_multipart);
+        fprintf(stderr, "[%s]  received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64 "\n",
+                self->addr_inp, self->received, self->sentok, self->eagain, self->eagain_multipart);
         self->last_print_ts = ts;
     };
     return 0;

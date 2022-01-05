@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <err.h>

@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #include <bsr_cmdchn.h>
 #include <bsr_str.h>
 #include <err.h>
@@ -76,23 +82,35 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
             } else {
                 // char sb[256];
                 // to_hex(sb, buf, n);
-                fprintf(stderr, "Received: %d [%.*s]\n", n, n, buf);
+                fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
                     zmq_send(self->socket, "exit", 4, 0);
                 } else if (n > 11 && memcmp("add-source,", buf, 11) == 0) {
-                    // NOTE assume large enough buffer.
-                    buf[n] = 0;
-                    fprintf(stderr, "Add source %s\n", buf);
-                    struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
-                    handler = malloc(sizeof(struct Handler));
-                    NULLRET(handler);
-                    handler->kind = SourceHandler;
-                    ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, (char *)buf + 11);
-                    NZRET(ec);
-                    ec = handler_list_add(self->handler_list, handler);
-                    NZRET(ec);
-                    handler = NULL;
+                    struct SplitMap sm;
+                    bsr_str_split((char *)buf, n, &sm);
+                    if (sm.n != 2) {
+                        fprintf(stderr, "ERROR bad command\n");
+                    } else {
+                        // NOTE assume large enough buffer.
+                        *(sm.end[0]) = 0;
+                        *(sm.end[1]) = 0;
+                        fprintf(stderr, "Add source [%s]\n", sm.beg[1]);
+                        struct Handler *h2 = handler_list_find_by_input_addr_2(self->handler_list, sm.beg[1]);
+                        if (h2 != NULL) {
+                            fprintf(stderr, "ERROR source [%s] is already added\n", sm.beg[1]);
+                        } else {
+                            struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
+                            handler = malloc(sizeof(struct Handler));
+                            NULLRET(handler);
+                            handler->kind = SourceHandler;
+                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1]);
+                            NZRET(ec);
+                            ec = handler_list_add(self->handler_list, handler);
+                            NZRET(ec);
+                            handler = NULL;
+                        };
+                    };
                 } else if (n > 11 && memcmp("add-output,", buf, 11) == 0) {
                     int i2 = 0;
                     char *splits[4];
@@ -122,6 +140,26 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
                             ec = bsr_chnhandler_add_out(h, splits[1]);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not add output\n");
+                            };
+                        };
+                    };
+                } else if (n >= 13 && memcmp("remove-source", buf, 13) == 0) {
+                    struct SplitMap sm;
+                    bsr_str_split((char *)buf, n, &sm);
+                    if (sm.n != 2) {
+                        fprintf(stderr, "ERROR wrong number of parameters\n");
+                    } else {
+                        buf[n] = 0;
+                        *(sm.end[0]) = 0;
+                        *(sm.end[1]) = 0;
+                        fprintf(stderr, "Remove source [%s] [%s]\n", sm.beg[0], sm.beg[1]);
+                        struct Handler *h = handler_list_find_by_input_addr_2(self->handler_list, sm.beg[1]);
+                        if (h == NULL) {
+                            fprintf(stderr, "ERROR can not find handler for source %s\n", sm.beg[1]);
+                        } else {
+                            ec = handler_list_remove(self->handler_list, h);
+                            if (ec != 0) {
+                                fprintf(stderr, "ERROR could not remove handler from handler-list\n");
                             };
                         };
                     };

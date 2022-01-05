@@ -1,3 +1,9 @@
+/*
+Project: bsreadrepeater
+License: GNU General Public License v3.0
+Authors: Dominik Werder <dominik.werder@gmail.com>
+*/
+
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
@@ -59,7 +65,9 @@ struct ReceivedCommand {
 };
 
 ERRT handler_list_add(struct HandlerList *self, struct Handler *handler);
+ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler);
 struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr);
+struct Handler *handler_list_find_by_input_addr_2(struct HandlerList *self, char const *addr);
 
 void cleanup_bsr_cmdchn(struct bsr_cmdchn *self);
 int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port,
