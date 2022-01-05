@@ -1,12 +1,16 @@
+#pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_poller.h>
 #include <err.h>
 #include <glib.h>
 #include <zmq.h>
 
+#define ADDR_CAP 80
+
 struct bsr_chnhandler {
     struct bsr_poller *poller;
     void *user_data;
+    char addr_inp[ADDR_CAP];
     int state;
     char *buf;
     int buflen;
@@ -19,7 +23,7 @@ struct bsr_chnhandler {
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
-ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, int port);
-ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, int port);
-ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, int port);
+ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp);
+ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
+ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller);

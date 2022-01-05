@@ -67,26 +67,9 @@ gboolean heq(gconstpointer a, gconstpointer b) {
     return 0;
 }
 
-struct CommandHandler {
-    struct bsr_cmdchn cmdchn;
-};
-
-enum HandlerKind {
-    CommandHandler = 1,
-    SourceHandler = 2,
-};
-
-union HandlerUnion {
-    struct CommandHandler cmdh;
-    struct bsr_chnhandler src;
-};
-
-struct Handler {
-    enum HandlerKind kind;
-    union HandlerUnion handler;
-};
-
 void cleanup_struct_Handler(struct Handler *self) {
+    // TODO remove output
+    fprintf(stderr, "cleanup_struct_Handler\n");
     int ec;
     if (self != NULL && self->kind != 0) {
         switch (self->kind) {
@@ -110,7 +93,9 @@ void cleanup_struct_Handler(struct Handler *self) {
         }
         }
         self->kind = 0;
-    }
+    } else {
+        fprintf(stderr, "WARN cleanup_struct_Handler nothing to do??\n");
+    };
 }
 
 ERRT handlers_init(struct Handler *self, struct bsr_poller *poller) {
@@ -166,27 +151,45 @@ ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct
     return 0;
 }
 
-struct HandlerList {
-    GArray *list;
-};
-
 ERRT cleanup_struct_HandlerList(struct HandlerList *self) {
-    fprintf(stderr, "TODO cleanup_struct_HandlerList\n");
-    self = self;
+    GList *it = self->list;
+    while (it != NULL) {
+        cleanup_struct_Handler(it->data);
+        // TODO this assumes that items in this list are always on the heap.
+        free(it->data);
+        it->data = NULL;
+        it = it->next;
+    };
+    g_list_free(self->list);
+    self->list = NULL;
     return -1;
 }
 
 ERRT handler_list_init(struct HandlerList *self) {
-    self->list = g_array_new(FALSE, FALSE, sizeof(struct Handler));
+    self->list = NULL;
     return 0;
 }
 
-ERRT handler_list_add(struct HandlerList *self, struct Handler handler) {
-    g_array_append_vals(self->list, &handler, 1);
+ERRT handler_list_add(struct HandlerList *self, struct Handler *handler) {
+    self->list = g_list_append(self->list, handler);
     return 0;
 }
 
-int main(int argc, char **argv) {
+struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr) {
+    GList *it = self->list;
+    while (it != NULL) {
+        struct Handler *handler = it->data;
+        if (handler->kind == SourceHandler) {
+            if (strncmp(handler->handler.src.addr_inp, addr, ADDR_CAP) == 0) {
+                return &handler->handler.src;
+            };
+        };
+        it = it->next;
+    }
+    return NULL;
+}
+
+int main2(int argc, char **argv) {
     argc = argc;
     argv = argv;
     int ec;
@@ -198,18 +201,13 @@ int main(int argc, char **argv) {
     poller.ctx = ctx;
     poller.poller = zmq_poller_new();
 
-    struct Handler cmdhandler __attribute__((cleanup(cleanup_struct_Handler))) = {0};
-    cmdhandler.kind = CommandHandler;
-    ec = bsr_cmdchn_init(&cmdhandler.handler.cmdh.cmdchn, &poller, &cmdhandler, 4242);
-    NZRET(ec);
-
-    struct Handler chn1 __attribute__((cleanup(cleanup_struct_Handler))) = {0};
-    chn1.kind = SourceHandler;
-    ec = bsr_chnhandler_init(&chn1.handler.src, &poller, &chn1, 50000);
-    NZRET(ec);
-
     struct HandlerList handler_list __attribute((cleanup(cleanup_struct_HandlerList))) = {0};
     ec = handler_list_init(&handler_list);
+    NZRET(ec);
+
+    struct Handler cmdhandler __attribute__((cleanup(cleanup_struct_Handler))) = {0};
+    cmdhandler.kind = CommandHandler;
+    ec = bsr_cmdchn_init(&cmdhandler.handler.cmdh.cmdchn, &poller, &cmdhandler, 4242, &handler_list);
     NZRET(ec);
 
     if (0) {
@@ -220,7 +218,7 @@ int main(int argc, char **argv) {
     int const evsmax = 8;
     zmq_poller_event_t evs[evsmax];
 
-    {
+    if (0) {
         GHashTable *ht = g_hash_table_new(hhf, heq);
         if (ht == NULL) {
             fprintf(stderr, "can not create hash table\n");
@@ -265,17 +263,9 @@ int main(int argc, char **argv) {
                 };
                 NZRET(ec);
                 if (cmd.ty == CmdExit) {
-                    fprintf(stderr, "got msg to exit\n");
+                    fprintf(stderr, "Exit command received\n");
                     run_poll_loop = 0;
                     break;
-                } else if (cmd.ty == CmdAdd) {
-                    fprintf(stderr, "add output\n");
-                    ec = bsr_chnhandler_add_out(&chn1.handler.src, cmd.var.add.port);
-                    NZRET(ec);
-                } else if (cmd.ty == CmdRemove) {
-                    fprintf(stderr, "remove output\n");
-                    ec = bsr_chnhandler_remove_out(&chn1.handler.src, 50001);
-                    NZRET(ec);
                 };
             } else {
                 fprintf(stderr, "ERROR can not handle event\n");
@@ -283,6 +273,12 @@ int main(int argc, char **argv) {
             }
         }
     }
-    fprintf(stderr, "Exit\n");
+    fprintf(stderr, "Cleaning up...\n");
     return 0;
+}
+
+int main(int argc, char **argv) {
+    int x = main2(argc, argv);
+    fprintf(stderr, "bsrep exit(%d)\n", x);
+    return x;
 }

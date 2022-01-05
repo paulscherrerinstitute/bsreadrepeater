@@ -1,4 +1,5 @@
 #include <bsr_cmdchn.h>
+#include <bsr_str.h>
 #include <err.h>
 #include <errno.h>
 #include <hex.h>
@@ -21,9 +22,11 @@ void cleanup_bsr_cmdchn(struct bsr_cmdchn *k) {
     }
 }
 
-int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port) {
+int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port,
+                    struct HandlerList *handler_list) {
     int ec;
     self->state = RECV;
+    self->handler_list = handler_list;
     // self->socket = zmq_socket(poller->ctx, ZMQ_STREAM);
     self->socket = zmq_socket(poller->ctx, ZMQ_REP);
     if (self->socket == NULL) {
@@ -45,14 +48,23 @@ int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *us
     return 0;
 }
 
+void cleanup_struct_Handler_ptr(struct Handler **k) {
+    if (*k != NULL) {
+        // TODO cleanup the interior as well if needed.
+        free(*k);
+        *k = NULL;
+    }
+}
+
 int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd) {
     int ec;
-    size_t const N = 64;
+    cmd->ty = CmdNone;
+    size_t const N = 256;
     uint8_t buf[N];
     if (self->state == RECV) {
         int do_recv = 1;
         while (do_recv) {
-            int n = zmq_recv(self->socket, buf, N, ZMQ_DONTWAIT);
+            int n = zmq_recv(self->socket, buf, N - 8, ZMQ_DONTWAIT);
             if (n == -1) {
                 if (errno == EAGAIN) {
                     fprintf(stderr, "no more\n");
@@ -62,20 +74,78 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
                     return -1;
                 }
             } else {
-                char sb[64];
-                to_hex(sb, buf, n);
-                fprintf(stderr, "Received: %d (%s) [%.*s]\n", n, sb, n, buf);
+                // char sb[256];
+                // to_hex(sb, buf, n);
+                fprintf(stderr, "Received: %d [%.*s]\n", n, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
-                } else if (n >= 5 && memcmp("add", buf, 3) == 0) {
-                    cmd->ty = CmdAdd;
-                    char *p2 = (char *)buf + n;
-                    errno = 0;
-                    int port = strtol((char *)buf + 4, &p2, 10);
-                    fprintf(stderr, "port %d\n", port);
-                    cmd->var.add.port = port;
-                } else if (n == 6 && memcmp("remove", buf, n) == 0) {
-                    cmd->ty = CmdRemove;
+                    zmq_send(self->socket, "exit", 4, 0);
+                } else if (n > 11 && memcmp("add-source,", buf, 11) == 0) {
+                    // NOTE assume large enough buffer.
+                    buf[n] = 0;
+                    fprintf(stderr, "Add source %s\n", buf);
+                    struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
+                    handler = malloc(sizeof(struct Handler));
+                    NULLRET(handler);
+                    handler->kind = SourceHandler;
+                    ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, (char *)buf + 11);
+                    NZRET(ec);
+                    ec = handler_list_add(self->handler_list, handler);
+                    NZRET(ec);
+                    handler = NULL;
+                } else if (n > 11 && memcmp("add-output,", buf, 11) == 0) {
+                    int i2 = 0;
+                    char *splits[4];
+                    char *p1 = (char *)buf;
+                    while (p1 < (char *)buf + n - 1) {
+                        if (*p1 == ',') {
+                            splits[i2] = p1 + 1;
+                            i2 += 1;
+                        };
+                        p1 += 1;
+                        if (i2 >= 4) {
+                            break;
+                        };
+                    };
+                    if (i2 != 2) {
+                        fprintf(stderr, "ERROR wrong number of parameters\n");
+                    } else {
+                        // NOTE assume large enough buffer.
+                        buf[n] = 0;
+                        *(splits[0] - 1) = 0;
+                        *(splits[1] - 1) = 0;
+                        fprintf(stderr, "Add output  [%s]  [%s]  [%s]\n", buf, splits[0], splits[1]);
+                        struct bsr_chnhandler *h = handler_list_find_by_input_addr(self->handler_list, splits[0]);
+                        if (h == NULL) {
+                            fprintf(stderr, "ERROR can not find handler for source %s\n", splits[0]);
+                        } else {
+                            ec = bsr_chnhandler_add_out(h, splits[1]);
+                            if (ec != 0) {
+                                fprintf(stderr, "ERROR could not add output\n");
+                            };
+                        };
+                    };
+                } else if (n >= 13 && memcmp("remove-output", buf, 13) == 0) {
+                    struct SplitMap sm;
+                    bsr_str_split((char *)buf, n, &sm);
+                    if (sm.n != 3) {
+                        fprintf(stderr, "ERROR wrong number of parameters\n");
+                    } else {
+                        buf[n] = 0;
+                        *(sm.end[0]) = 0;
+                        *(sm.end[1]) = 0;
+                        *(sm.end[2]) = 0;
+                        fprintf(stderr, "Remove output [%s] [%s] [%s]\n", sm.beg[0], sm.beg[1], sm.beg[2]);
+                        struct bsr_chnhandler *h = handler_list_find_by_input_addr(self->handler_list, sm.beg[1]);
+                        if (h == NULL) {
+                            fprintf(stderr, "ERROR can not find handler for source %s\n", sm.beg[1]);
+                        } else {
+                            ec = bsr_chnhandler_remove_out(h, sm.beg[2]);
+                            if (ec != 0) {
+                                fprintf(stderr, "ERROR could not remove output\n");
+                            };
+                        };
+                    };
                 };
                 // TODO only try more if multipart. REQ must be matched by
                 // REP.
