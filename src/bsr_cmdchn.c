@@ -28,20 +28,18 @@ void cleanup_bsr_cmdchn(struct bsr_cmdchn *k) {
     }
 }
 
-int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port,
-                    struct HandlerList *handler_list) {
+int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, char *addr,
+                    struct HandlerList *handler_list, struct bsr_statistics *stats) {
     int ec;
     self->state = RECV;
     self->handler_list = handler_list;
-    // self->socket = zmq_socket(poller->ctx, ZMQ_STREAM);
+    self->stats = stats;
     self->socket = zmq_socket(poller->ctx, ZMQ_REP);
     if (self->socket == NULL) {
         fprintf(stderr, "can not create socket: %s\n", zmq_strerror(errno));
         return -1;
     }
-    char buf[32];
-    snprintf(buf, 32, "tcp://127.0.0.1:%d", port);
-    ec = zmq_bind(self->socket, buf);
+    ec = zmq_bind(self->socket, addr);
     if (ec != 0) {
         fprintf(stderr, "can not bind socket: %s\n", zmq_strerror(errno));
         return ec;
@@ -80,8 +78,6 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
                     return -1;
                 }
             } else {
-                // char sb[256];
-                // to_hex(sb, buf, n);
                 fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
@@ -104,7 +100,7 @@ int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, 
                             handler = malloc(sizeof(struct Handler));
                             NULLRET(handler);
                             handler->kind = SourceHandler;
-                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1]);
+                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], self->stats);
                             NZRET(ec);
                             ec = handler_list_add(self->handler_list, handler);
                             NZRET(ec);

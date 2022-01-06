@@ -22,6 +22,27 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 
 static int const NBUF = 1024 * 128;
 
+int bsr_statistics_init(struct bsr_statistics *self) {
+    clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
+    self->received = 0;
+    self->sentok = 0;
+    self->eagain = 0;
+    self->eagain_multipart = 0;
+    self->recv_buf_too_small = 0;
+    return 0;
+}
+
+uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t dt =
+        (ts.tv_sec - self->last_print_ts.tv_sec) * 1000 + (ts.tv_nsec - self->last_print_ts.tv_nsec) / 1000000;
+    if (dt > UINT32_MAX) {
+        dt = UINT32_MAX;
+    };
+    return dt;
+}
+
 enum HandlerState {
     RECV = 1,
 };
@@ -79,7 +100,8 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     return 0;
 }
 
-ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp) {
+ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
+                         struct bsr_statistics *stats) {
     int ec;
     self->poller = poller;
     self->user_data = user_data;
@@ -90,6 +112,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->sentok = 0;
     self->eagain = 0;
     self->eagain_multipart = 0;
+    self->stats = stats;
     self->socks_out = NULL;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
     self->buf = malloc(NBUF);
@@ -197,6 +220,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         };
         int do_recv = 1;
         while (do_recv) {
+            // zmq_msg_t msgin;
+            // zmq_msg_init(&msgin);
+            // int n = zmq_msg_recv(&msgin, self->sock_inp, ZMQ_DONTWAIT);
             int n = zmq_recv(self->sock_inp, self->buf, NBUF, ZMQ_DONTWAIT);
             if (n == -1) {
                 if (errno == EAGAIN) {
@@ -208,6 +234,10 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 };
             } else {
                 self->received += 1;
+                self->stats->received += 1;
+                if (n > NBUF) {
+                    self->stats->recv_buf_too_small += 1;
+                };
                 int more;
                 {
                     size_t opt_val_len = sizeof(more);
@@ -241,9 +271,11 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         if (errno == EAGAIN) {
                             if (data->in_multipart == 1) {
                                 self->eagain_multipart += 1;
+                                self->stats->eagain_multipart += 1;
                             } else {
                                 // Output can't keep up. Drop message.
                                 self->eagain += 1;
+                                self->stats->eagain += 1;
                             }
                         } else {
                             fprintf(stderr, "chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
@@ -255,6 +287,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     } else {
                         // Message is accepted by zmq.
                         self->sentok += 1;
+                        self->stats->sentok += 1;
                         if (more == 1) {
                             data->in_multipart = 1;
                         } else {
@@ -269,14 +302,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         fprintf(stderr, "chnhandler unknown state: %d\n", self->state);
         return -1;
     };
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t dt =
-        (ts.tv_sec - self->last_print_ts.tv_sec) * 1000 + (ts.tv_nsec - self->last_print_ts.tv_nsec) / 1000000;
-    if (dt > 1500) {
-        fprintf(stderr, "[%s]  received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64 "\n",
-                self->addr_inp, self->received, self->sentok, self->eagain, self->eagain_multipart);
-        self->last_print_ts = ts;
+    if (bsr_statistics_ms_since_last_print(self->stats) > 2000) {
+        struct bsr_statistics *st = self->stats;
+        fprintf(stderr,
+                "received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64
+                "  recv_buf_too_small %" PRIu64 "\n",
+                st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small);
+        clock_gettime(CLOCK_MONOTONIC, &self->stats->last_print_ts);
     };
     return 0;
 }

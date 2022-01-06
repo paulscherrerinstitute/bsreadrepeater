@@ -21,6 +21,8 @@ struct bsr_cmdchn {
     int state;
     // not owned:
     struct HandlerList *handler_list;
+    // not owned:
+    struct bsr_statistics *stats;
 };
 
 struct CommandHandler {
@@ -70,6 +72,6 @@ struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self,
 struct Handler *handler_list_find_by_input_addr_2(struct HandlerList *self, char const *addr);
 
 void cleanup_bsr_cmdchn(struct bsr_cmdchn *self);
-int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, int port,
-                    struct HandlerList *handler_list);
+int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, char *addr,
+                    struct HandlerList *handler_list, struct bsr_statistics *stats);
 int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd);
