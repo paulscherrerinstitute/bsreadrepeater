@@ -18,6 +18,8 @@ struct HandlerList {
 
 struct bsr_cmdchn {
     void *socket;
+    char addr[ADDR_CAP];
+    void *user_data;
     int state;
     // not owned:
     struct HandlerList *handler_list;

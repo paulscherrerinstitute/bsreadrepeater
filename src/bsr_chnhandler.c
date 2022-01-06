@@ -43,6 +43,16 @@ uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
     return dt;
 }
 
+ERRT bsr_statistics_print_now(struct bsr_statistics *self) {
+    struct bsr_statistics *st = self;
+    fprintf(stderr,
+            "received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64
+            "  recv_buf_too_small %" PRIu64 "\n",
+            st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small);
+    clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
+    return 0;
+}
+
 enum HandlerState {
     RECV = 1,
 };
@@ -63,10 +73,6 @@ void cleanup_zmq_socket(void **k) {
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     fprintf(stderr, "INFO cleanup_bsr_chnhandler\n");
     int ec;
-    if (self->buf != NULL) {
-        free(self->buf);
-        self->buf = NULL;
-    };
     if (self->sock_inp != NULL) {
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
         if (ec == -1) {
@@ -115,10 +121,6 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->stats = stats;
     self->socks_out = NULL;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
-    self->buf = malloc(NBUF);
-    if (self->buf == NULL) {
-        return -1;
-    }
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
     ec = set_rcvhwm(self->sock_inp, RCVHWM);
@@ -205,6 +207,12 @@ ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr) {
     return 0;
 }
 
+void cleanup_zmq_msg(struct zmq_msg_t *k) {
+    if (k != NULL) {
+        zmq_msg_close(k);
+    }
+}
+
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller) {
     poller = poller;
     int ec;
@@ -220,10 +228,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         };
         int do_recv = 1;
         while (do_recv) {
-            // zmq_msg_t msgin;
-            // zmq_msg_init(&msgin);
-            // int n = zmq_msg_recv(&msgin, self->sock_inp, ZMQ_DONTWAIT);
-            int n = zmq_recv(self->sock_inp, self->buf, NBUF, ZMQ_DONTWAIT);
+            zmq_msg_t msgin __attribute__((cleanup(cleanup_zmq_msg)));
+            zmq_msg_init(&msgin);
+            int n = zmq_msg_recv(&msgin, self->sock_inp, ZMQ_DONTWAIT);
             if (n == -1) {
                 if (errno == EAGAIN) {
                     do_recv = 0;
@@ -233,6 +240,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     return -1;
                 };
             } else {
+                char *buf = zmq_msg_data(&msgin);
                 self->received += 1;
                 self->stats->received += 1;
                 if (n > NBUF) {
@@ -255,9 +263,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     if (n < rawmax) {
                         rawmax = n;
                     };
-                    to_hex(sb, (uint8_t *)self->buf, nn);
-                    fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, sb, rawmax, self->buf);
-                }
+                    to_hex(sb, (uint8_t *)buf, nn);
+                    fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, sb, rawmax, buf);
+                };
                 int sndflags = ZMQ_DONTWAIT;
                 if (more == 1) {
                     sndflags |= ZMQ_SNDMORE;
@@ -266,14 +274,19 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 while (it != NULL) {
                     struct sockout *data = it->data;
                     void *so = data->sock;
-                    int n2 = zmq_send(so, self->buf, n, sndflags);
+                    zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
+                    ec = zmq_msg_init(&msgout);
+                    ZMQ_NEGONE(ec);
+                    ec = zmq_msg_copy(&msgout, &msgin);
+                    ZMQ_NEGONE(ec);
+                    int n2 = zmq_msg_send(&msgout, so, sndflags);
                     if (n2 == -1) {
                         if (errno == EAGAIN) {
+                            // Output can't keep up. Drop message.
                             if (data->in_multipart == 1) {
                                 self->eagain_multipart += 1;
                                 self->stats->eagain_multipart += 1;
                             } else {
-                                // Output can't keep up. Drop message.
                                 self->eagain += 1;
                                 self->stats->eagain += 1;
                             }
@@ -303,12 +316,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         return -1;
     };
     if (bsr_statistics_ms_since_last_print(self->stats) > 2000) {
-        struct bsr_statistics *st = self->stats;
-        fprintf(stderr,
-                "received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64
-                "  recv_buf_too_small %" PRIu64 "\n",
-                st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small);
-        clock_gettime(CLOCK_MONOTONIC, &self->stats->last_print_ts);
+        bsr_statistics_print_now(self->stats);
     };
     return 0;
 }

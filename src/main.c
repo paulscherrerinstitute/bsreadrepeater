@@ -273,7 +273,7 @@ int main2(int argc, char **argv) {
     ec = bsr_cmdchn_init(&cmdhandler.handler.cmdh.cmdchn, &poller, &cmdhandler, cmd_addr, &handler_list, &stats);
     NZRET(ec);
 
-    // TODO convert startup file processing into a `Handler`.
+    // TODO cleanup this ad-hoc startup file logic and convert it into a `Handler`.
     int const FBMAX = 128;
     char fbuf[FBMAX];
     memset(fbuf, 0, FBMAX);
@@ -309,12 +309,11 @@ int main2(int argc, char **argv) {
             } else {
                 fprintf(stderr, "Poller error: %s\n", zmq_strerror(errno));
                 return -1;
-            }
+            };
         }
         for (int i = 0; i < nev; i += 1) {
             zmq_poller_event_t *ev = evs + i;
             if (ev->socket == cmdreq) {
-                fprintf(stderr, "cmdreq events %d\n", ev->events);
                 if ((ev->events & ZMQ_POLLIN) != 0) {
                     char gg[64];
                     int n = zmq_recv(cmdreq, gg, 64, 0);
@@ -340,8 +339,8 @@ int main2(int argc, char **argv) {
                     fprintf(stderr, "ERROR file I/O error\n");
                     zmq_poller_remove_fd(poller.poller, stf);
                 } else if (n == 0) {
-                    fprintf(stderr, "EOF\n");
                     zmq_poller_remove_fd(poller.poller, stf);
+                    close(stf);
                 } else {
                     fbpw += n;
                 };

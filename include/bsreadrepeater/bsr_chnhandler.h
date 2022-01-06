@@ -30,8 +30,6 @@ struct bsr_chnhandler {
     void *user_data;
     char addr_inp[ADDR_CAP];
     int state;
-    char *buf;
-    int buflen;
     void *sock_inp;
     GList *socks_out;
     struct timespec last_print_ts;
