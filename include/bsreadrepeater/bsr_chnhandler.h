@@ -44,6 +44,6 @@ struct bsr_chnhandler {
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats);
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller);

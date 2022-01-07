@@ -2,6 +2,8 @@ add_executable(bsrep
 ../include/bsreadrepeater/err.h
 ../include/bsreadrepeater/bsr_str.h
 bsr_str.c
+../include/bsreadrepeater/bsr_startupcmd.h
+bsr_startupcmd.c
 main.c
 ../include/bsreadrepeater/bsr_poller.h
 bsr_poller.c

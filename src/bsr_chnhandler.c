@@ -71,7 +71,6 @@ void cleanup_zmq_socket(void **k) {
 }
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
-    fprintf(stderr, "INFO cleanup_bsr_chnhandler\n");
     int ec;
     if (self->sock_inp != NULL) {
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);

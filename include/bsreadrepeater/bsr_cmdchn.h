@@ -8,6 +8,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
 #include <bsr_poller.h>
+#include <bsr_startupcmd.h>
 #include <err.h>
 #include <glib.h>
 #include <zmq.h>
@@ -34,11 +35,13 @@ struct CommandHandler {
 enum HandlerKind {
     CommandHandler = 1,
     SourceHandler = 2,
+    StartupHandler = 3,
 };
 
 union HandlerUnion {
     struct CommandHandler cmdh;
     struct bsr_chnhandler src;
+    struct bsr_startupcmd start;
 };
 
 struct Handler {

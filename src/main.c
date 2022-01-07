@@ -8,6 +8,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <bsr_chnhandler.h>
 #include <bsr_cmdchn.h>
 #include <bsr_poller.h>
+#include <bsr_startupcmd.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -76,23 +77,24 @@ gboolean heq(gconstpointer a, gconstpointer b) {
 }
 
 void cleanup_struct_Handler(struct Handler *self) {
-    // TODO remove output
-    fprintf(stderr, "cleanup_struct_Handler\n");
     int ec;
     if (self != NULL && self->kind != 0) {
         switch (self->kind) {
         case CommandHandler: {
-            struct bsr_cmdchn *h = &self->handler.cmdh.cmdchn;
-            ec = zmq_close(h->socket);
-            if (ec == -1) {
-                fprintf(stderr, "ERROR can not close bsr_cmdchn socket\n");
-            }
+            cleanup_bsr_cmdchn(&self->handler.cmdh.cmdchn);
             break;
         }
         case SourceHandler: {
             ec = cleanup_bsr_chnhandler(&self->handler.src);
             if (ec == -1) {
                 fprintf(stderr, "ERROR cleanup SourceHandler\n");
+            }
+            break;
+        }
+        case StartupHandler: {
+            ec = cleanup_struct_bsr_startupcmd(&self->handler.start);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR cleanup StartupHandler\n");
             }
             break;
         }
@@ -147,6 +149,11 @@ ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct
         NZRET(ec);
         break;
     }
+    case StartupHandler: {
+        ec = bsr_startupcmd_handle_event(&self->handler.start);
+        NZRET(ec);
+        break;
+    }
     default: {
         fprintf(stderr, "ERROR handlers_handle_msg unhandled kind %d\n", self->kind);
     }
@@ -174,6 +181,7 @@ ERRT handler_list_init(struct HandlerList *self) {
 }
 
 ERRT handler_list_add(struct HandlerList *self, struct Handler *handler) {
+    // TODO currently we assume that `handler` is on the heap and we assume ownership.
     self->list = g_list_append(self->list, handler);
     return 0;
 }
@@ -221,7 +229,14 @@ void cleanup_socket(void **k) {
     }
 }
 
-int main2(int argc, char **argv) {
+void cleanup_free_struct_Handler(struct Handler **k) {
+    if (*k != NULL) {
+        free(*k);
+        *k = NULL;
+    }
+}
+
+int main_inner(int argc, char **argv) {
     int ec;
     {
         int maj, min, pat;
@@ -259,6 +274,7 @@ int main2(int argc, char **argv) {
 
     void *ctx __attribute__((cleanup(cleanup_zmq_context))) = zmq_ctx_new();
     NULLRET(ctx);
+    // ec = zmq_ctx_set(ctx, ZMQ_IPV6, 1);
 
     struct bsr_poller poller __attribute__((cleanup(cleanup_bsr_poller))) = {0};
     poller.ctx = ctx;
@@ -273,30 +289,20 @@ int main2(int argc, char **argv) {
     ec = bsr_cmdchn_init(&cmdhandler.handler.cmdh.cmdchn, &poller, &cmdhandler, cmd_addr, &handler_list, &stats);
     NZRET(ec);
 
-    // TODO cleanup this ad-hoc startup file logic and convert it into a `Handler`.
-    int const FBMAX = 128;
-    char fbuf[FBMAX];
-    memset(fbuf, 0, FBMAX);
-    char *fbpw = fbuf;
-    char *fbpm = fbuf + FBMAX;
     int stf = -1;
     if (startup_file != NULL) {
         stf = open(startup_file, O_RDONLY);
     }
     if (stf != -1) {
-        ec = zmq_poller_add_fd(poller.poller, stf, &stf, ZMQ_POLLIN);
-        if (ec == -1) {
-            fprintf(stderr, "ERROR I/O error on startup file\n");
-            return -1;
-        }
+        struct Handler *hh __attribute__((cleanup(cleanup_free_struct_Handler))) = NULL;
+        hh = malloc(sizeof(struct Handler));
+        NULLRET(hh);
+        hh->kind = StartupHandler;
+        ec = bsr_startupcmd_init(&hh->handler.start, &poller, hh, stf, cmd_addr);
+        NZRET(ec);
+        handler_list_add(&handler_list, hh);
+        hh = NULL;
     }
-
-    void *cmdreq __attribute__((cleanup(cleanup_socket))) = zmq_socket(ctx, ZMQ_REQ);
-    ec = zmq_connect(cmdreq, cmd_addr);
-    ZMQ_NEGONE(ec);
-    ec = zmq_poller_add(poller.poller, cmdreq, &cmdreq, 0);
-    ZMQ_NEGONE(ec);
-    int cmdreqst = 0;
 
     int const evsmax = 8;
     zmq_poller_event_t evs[evsmax];
@@ -313,38 +319,7 @@ int main2(int argc, char **argv) {
         }
         for (int i = 0; i < nev; i += 1) {
             zmq_poller_event_t *ev = evs + i;
-            if (ev->socket == cmdreq) {
-                if ((ev->events & ZMQ_POLLIN) != 0) {
-                    char gg[64];
-                    int n = zmq_recv(cmdreq, gg, 64, 0);
-                    if (n <= 0) {
-                        fprintf(stderr, "ERROR reading commands\n");
-                        return -1;
-                    } else {
-                        ec = zmq_poller_modify_fd(poller.poller, stf, ZMQ_POLLIN);
-                        ZMQ_NEGONE(ec);
-                        ec = zmq_poller_modify(poller.poller, cmdreq, 0);
-                        ZMQ_NEGONE(ec);
-                        cmdreqst = 0;
-                    };
-                } else if ((ev->events & ZMQ_POLLOUT) != 0) {
-                };
-            } else if (ev->user_data == &stf) {
-                if (cmdreqst != 0) {
-                    fprintf(stderr, "ERROR Unexpected cmdreqst %d\n", cmdreqst);
-                    return -1;
-                };
-                ssize_t n = read(stf, fbpw, fbpm - fbpw);
-                if (n == -1) {
-                    fprintf(stderr, "ERROR file I/O error\n");
-                    zmq_poller_remove_fd(poller.poller, stf);
-                } else if (n == 0) {
-                    zmq_poller_remove_fd(poller.poller, stf);
-                    close(stf);
-                } else {
-                    fbpw += n;
-                };
-            } else if (ev->user_data != NULL) {
+            if (ev->user_data != NULL) {
                 struct ReceivedCommand cmd = {0};
                 ec = handlers_handle_msg(ev->user_data, &poller, &cmd);
                 if (ec != 0) {
@@ -360,33 +335,6 @@ int main2(int argc, char **argv) {
                 fprintf(stderr, "ERROR can not handle event\n");
                 return -1;
             };
-            if (fbpw > fbuf && cmdreqst == 0) {
-                char *p1 = fbuf;
-                while (p1 < fbpw) {
-                    if (*p1 == '\n') {
-                        *p1 = 0;
-                        p1 += 1;
-                        ssize_t g = fbpw - p1;
-                        ec = zmq_send(cmdreq, fbuf, strnlen(fbuf, FBMAX), 0);
-                        ZMQ_NEGONE(ec);
-                        memmove(fbuf, p1, g);
-                        fbpw = fbuf + g;
-                        p1 = fbuf;
-                        int evs = 0;
-                        size_t optl = sizeof(4);
-                        ec = zmq_getsockopt(cmdreq, ZMQ_EVENTS, &evs, &optl);
-                        ZMQ_NEGONE(ec);
-                        ec = zmq_poller_modify_fd(poller.poller, stf, 0);
-                        ZMQ_NEGONE(ec);
-                        ec = zmq_poller_modify(poller.poller, cmdreq, ZMQ_POLLIN);
-                        ZMQ_NEGONE(ec);
-                        cmdreqst = 1;
-                        break;
-                    } else {
-                        p1 += 1;
-                    };
-                };
-            };
         }
     }
     fprintf(stderr, "Cleaning up...\n");
@@ -394,7 +342,7 @@ int main2(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-    int x = main2(argc, argv);
+    int x = main_inner(argc, argv);
     fprintf(stderr, "bsrep exit(%d)\n", x);
     return x;
 }
