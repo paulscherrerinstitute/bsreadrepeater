@@ -15,9 +15,11 @@ bsr_cmdchn.c
 bsr_chnhandler.c
 ../include/bsreadrepeater/hex.h
 hex.c
+bsr_json.cpp
 )
 target_compile_options(bsrep PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(bsrep PRIVATE "../include/bsreadrepeater")
+target_include_directories(bsrep PRIVATE "../../../software/rapidjson/include")
 #target_link_libraries(bsrep kappa)
 target_link_libraries(bsrep libzmq)
 target_link_libraries(bsrep PkgConfig::glib2pkg)

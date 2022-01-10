@@ -44,6 +44,9 @@ struct bsr_chnhandler {
     void *user_data;
     char addr_inp[ADDR_CAP];
     int state;
+    int more_last;
+    int mpc;
+    uint32_t mpmsgc;
     void *sock_inp;
     GList *socks_out;
     struct timespec last_print_ts;
@@ -53,6 +56,7 @@ struct bsr_chnhandler {
     uint64_t eagain_multipart;
     uint64_t recv_bytes;
     uint64_t sent_bytes;
+    uint64_t bsread_errors;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
 };

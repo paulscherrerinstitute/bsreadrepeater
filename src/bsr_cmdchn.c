@@ -5,6 +5,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 */
 
 #include <bsr_cmdchn.h>
+#include <bsr_json.h>
 #include <bsr_str.h>
 #include <err.h>
 #include <errno.h>
@@ -33,7 +34,8 @@ void cleanup_bsr_cmdchn(struct bsr_cmdchn *k) {
 ERRT bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, char *addr,
                      struct HandlerList *handler_list, struct bsr_statistics *stats) {
     int ec;
-    strncpy(self->addr, addr, ADDR_CAP);
+    strncpy(self->addr, addr, ADDR_CAP - 1);
+    self->addr[ADDR_CAP - 1] = 0;
     self->state = RECV;
     self->handler_list = handler_list;
     self->user_data = user_data;
@@ -161,6 +163,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             snprintf(s, sizeof(s), "received bytes %" PRIu64 "\n", h->recv_bytes);
                             g_string_append(str, s);
                             snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", h->sent_bytes);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "bsread errors %" PRIu64 "\n", h->bsread_errors);
                             g_string_append(str, s);
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
@@ -298,6 +302,9 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         };
                     };
                     char *rep = "remove-output: done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
+                } else {
+                    char *rep = "Unknown command";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 };
                 // TODO only try more if multipart. REQ must be matched by

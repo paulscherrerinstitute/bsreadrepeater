@@ -5,6 +5,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 */
 
 #include <bsr_chnhandler.h>
+#include <bsr_json.h>
 #include <bsr_sockhelp.h>
 #include <err.h>
 #include <errno.h>
@@ -42,7 +43,7 @@ uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
         (uint64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000) - (uint64_t)(t1.tv_sec * 1000 + t1.tv_nsec / 1000000);
     if (dt > UINT32_MAX) {
         dt = UINT32_MAX;
-    };
+    }
     return dt;
 }
 
@@ -110,12 +111,16 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     strncpy(self->addr_inp, addr_inp, ADDR_CAP);
     self->addr_inp[ADDR_CAP - 1] = 0;
     self->state = RECV;
+    self->more_last = 0;
+    self->mpc = 0;
+    self->mpmsgc = 0;
     self->received = 0;
     self->sentok = 0;
     self->eagain = 0;
     self->eagain_multipart = 0;
     self->recv_bytes = 0;
     self->sent_bytes = 0;
+    self->bsread_errors = 0;
     self->stats = stats;
     self->socks_out = NULL;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
@@ -188,7 +193,7 @@ ERRT bsr_chnhandler_remove_nth_out(struct bsr_chnhandler *self, int ix) {
         NZRET(ec);
         self->socks_out = g_list_remove(self->socks_out, it->data);
         free(data);
-    };
+    }
     return 0;
 }
 
@@ -203,7 +208,7 @@ ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr) {
         };
         it = it->next;
         i += 1;
-    };
+    }
     ec = bsr_chnhandler_remove_nth_out(self, i);
     NZRET(ec);
     return 0;
@@ -227,7 +232,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         if ((sockflags & ZMQ_POLLIN) == 0) {
             fprintf(stderr, "RECV but not POLLIN\n");
             return -1;
-        };
+        }
         int do_recv = 1;
         while (do_recv) {
             zmq_msg_t msgin __attribute__((cleanup(cleanup_zmq_msg)));
@@ -240,7 +245,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     do_recv = 0;
                     fprintf(stderr, "error in recv %d  %s\n", errno, zmq_strerror(errno));
                     return -1;
-                };
+                }
             } else {
                 self->recv_bytes += n;
                 char *buf = zmq_msg_data(&msgin);
@@ -248,17 +253,17 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 self->stats->received += 1;
                 if (n > NBUF) {
                     self->stats->recv_buf_too_small += 1;
-                };
+                }
                 int more;
                 {
                     size_t opt_val_len = sizeof(more);
                     ec = zmq_getsockopt(self->sock_inp, ZMQ_RCVMORE, &more, &opt_val_len);
                     ZMQ_NEGONE(ec);
                 }
+                int const NHEXBUF = 16;
+                char hexbuf[2 * NHEXBUF + 4];
                 if (PRINT_RECEIVED) {
-                    int const N2 = 6;
-                    char sb[2 * N2 + 4];
-                    int nn = N2;
+                    int nn = NHEXBUF;
                     if (n < nn) {
                         nn = n;
                     };
@@ -266,13 +271,33 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     if (n < rawmax) {
                         rawmax = n;
                     };
-                    to_hex(sb, (uint8_t *)buf, nn);
-                    fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, sb, rawmax, buf);
-                };
+                    to_hex(hexbuf, (uint8_t *)buf, nn);
+                    fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, hexbuf, rawmax, buf);
+                }
+                if (self->more_last == 1) {
+                    self->mpc += 1;
+                } else {
+                    self->mpc = 0;
+                }
                 int sndflags = ZMQ_DONTWAIT;
                 if (more == 1) {
                     sndflags |= ZMQ_SNDMORE;
-                };
+                } else {
+                }
+                if ((self->mpc == 0 || self->mpc == 1)) {
+                    GString *log = g_string_new("");
+                    if (json_parse(zmq_msg_data(&msgin), n, log) != 0) {
+                        to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
+                        fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp, self->mpmsgc,
+                                self->mpc, n, 32, (char *)zmq_msg_data(&msgin), hexbuf);
+                    } else {
+                        if ((self->mpmsgc % 100) == 0) {
+                            fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\n%s\n-----\n", self->addr_inp, self->mpmsgc,
+                                    self->mpc, log->str);
+                        }
+                    }
+                    g_string_free(log, TRUE);
+                }
                 GList *it = self->socks_out;
                 while (it != NULL) {
                     struct sockout *so = it->data;
@@ -312,18 +337,22 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                             so->in_multipart = 1;
                         } else {
                             so->in_multipart = 0;
-                        };
+                        }
                     };
                     it = it->next;
-                };
-            };
-        };
+                }
+                self->more_last = more;
+                if (more != 1) {
+                    self->mpmsgc += 1;
+                }
+            }
+        }
     } else {
         fprintf(stderr, "chnhandler unknown state: %d\n", self->state);
         return -1;
-    };
+    }
     if (bsr_statistics_ms_since_last_print(self->stats) > 4000) {
         bsr_statistics_print_now(self->stats);
-    };
+    }
     return 0;
 }
