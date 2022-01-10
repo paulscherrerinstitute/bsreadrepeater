@@ -166,6 +166,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             g_string_append(str, s);
                             snprintf(s, sizeof(s), "bsread errors %" PRIu64 "\n", h->bsread_errors);
                             g_string_append(str, s);
+                            snprintf(s, sizeof(s), "json parse errors %" PRIu64 "\n", h->json_parse_errors);
+                            g_string_append(str, s);
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;

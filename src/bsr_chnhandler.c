@@ -121,6 +121,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->recv_bytes = 0;
     self->sent_bytes = 0;
     self->bsread_errors = 0;
+    self->json_parse_errors = 0;
     self->stats = stats;
     self->socks_out = NULL;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
@@ -287,62 +288,67 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 if ((self->mpc == 0 || self->mpc == 1)) {
                     GString *log = g_string_new("");
                     if (json_parse(zmq_msg_data(&msgin), n, log) != 0) {
-                        to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                        fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp, self->mpmsgc,
-                                self->mpc, n, 32, (char *)zmq_msg_data(&msgin), hexbuf);
+                        self->json_parse_errors += 1;
+                        if (self->json_parse_errors < 100) {
+                            to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
+                            fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
+                                    self->mpmsgc, self->mpc, n, 32, (char *)zmq_msg_data(&msgin), hexbuf);
+                        }
                     } else {
-                        if ((self->mpmsgc % 100) == 0) {
+                        if ((self->mpmsgc % 1000) == 0) {
                             fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\n%s\n-----\n", self->addr_inp, self->mpmsgc,
                                     self->mpc, log->str);
                         }
                     }
                     g_string_free(log, TRUE);
                 }
-                GList *it = self->socks_out;
-                while (it != NULL) {
-                    struct sockout *so = it->data;
-                    zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
-                    ec = zmq_msg_init(&msgout);
-                    ZMQ_NEGONE(ec);
-                    ec = zmq_msg_copy(&msgout, &msgin);
-                    ZMQ_NEGONE(ec);
-                    int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
-                    if (n2 == -1) {
-                        if (errno == EAGAIN) {
-                            // Output can't keep up. Drop message.
-                            if (so->in_multipart == 1) {
-                                so->eagain_multipart += 1;
-                                self->eagain_multipart += 1;
-                                self->stats->eagain_multipart += 1;
+                if (self->mpmsgc > 0) {
+                    GList *it = self->socks_out;
+                    while (it != NULL) {
+                        struct sockout *so = it->data;
+                        zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
+                        ec = zmq_msg_init(&msgout);
+                        ZMQ_NEGONE(ec);
+                        ec = zmq_msg_copy(&msgout, &msgin);
+                        ZMQ_NEGONE(ec);
+                        int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
+                        if (n2 == -1) {
+                            if (errno == EAGAIN) {
+                                // Output can't keep up. Drop message.
+                                if (so->in_multipart == 1) {
+                                    so->eagain_multipart += 1;
+                                    self->eagain_multipart += 1;
+                                    self->stats->eagain_multipart += 1;
+                                } else {
+                                    so->eagain += 1;
+                                    self->eagain += 1;
+                                    self->stats->eagain += 1;
+                                }
                             } else {
-                                so->eagain += 1;
-                                self->eagain += 1;
-                                self->stats->eagain += 1;
-                            }
-                        } else {
-                            fprintf(stderr, "chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
+                                fprintf(stderr, "chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
+                                return -1;
+                            };
+                        } else if (n2 != n) {
+                            fprintf(stderr, "chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
                             return -1;
-                        };
-                    } else if (n2 != n) {
-                        fprintf(stderr, "chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
-                        return -1;
-                    } else {
-                        // Message is accepted by zmq.
-                        so->sent_count += 1;
-                        so->sent_bytes += n2;
-                        self->sentok += 1;
-                        self->sent_bytes += n2;
-                        self->stats->sentok += 1;
-                        if (more == 1) {
-                            so->in_multipart = 1;
                         } else {
-                            so->in_multipart = 0;
-                        }
-                    };
-                    it = it->next;
+                            // Message is accepted by zmq.
+                            so->sent_count += 1;
+                            so->sent_bytes += n2;
+                            self->sentok += 1;
+                            self->sent_bytes += n2;
+                            self->stats->sentok += 1;
+                            if (more == 1) {
+                                so->in_multipart = 1;
+                            } else {
+                                so->in_multipart = 0;
+                            }
+                        };
+                        it = it->next;
+                    }
                 }
                 self->more_last = more;
-                if (more != 1) {
+                if (more == 0) {
                     self->mpmsgc += 1;
                 }
             }

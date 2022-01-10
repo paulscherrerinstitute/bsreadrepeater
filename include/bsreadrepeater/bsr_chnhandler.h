@@ -57,6 +57,7 @@ struct bsr_chnhandler {
     uint64_t recv_bytes;
     uint64_t sent_bytes;
     uint64_t bsread_errors;
+    uint64_t json_parse_errors;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
 };
