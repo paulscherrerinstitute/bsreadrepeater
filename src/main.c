@@ -9,13 +9,16 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <bsr_cmdchn.h>
 #include <bsr_poller.h>
 #include <bsr_startupcmd.h>
+#include <bsr_str.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <math.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 #include <zmq.h>
 
@@ -304,11 +307,26 @@ int main_inner(int argc, char **argv) {
         hh = NULL;
     }
 
-    int const evsmax = 8;
+    int const evsmax = 64;
     zmq_poller_event_t evs[evsmax];
     int run_poll_loop = 1;
     for (uint64_t i4 = 0; run_poll_loop == 1; i4 += 1) {
+        struct timespec ts1;
+        struct timespec ts2;
+        clock_gettime(CLOCK_MONOTONIC, &ts1);
         int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 10000);
+        clock_gettime(CLOCK_MONOTONIC, &ts2);
+        {
+            float const k = 0.05f;
+            int64_t dt = time_delta_mu(ts1, ts2);
+            float d1 = (float)dt - stats.poll_wait_ema;
+            stats.poll_wait_ema += k * d1;
+            stats.poll_wait_emv = (1.0f - k) * (stats.poll_wait_emv + k * d1 * d1);
+            if (FALSE) {
+                fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats.poll_wait_ema,
+                        sqrtf(stats.poll_wait_emv));
+            };
+        };
         if (nev == -1) {
             if (errno == EAGAIN) {
                 fprintf(stderr, "Nothing to do\n");
@@ -335,8 +353,21 @@ int main_inner(int argc, char **argv) {
                 fprintf(stderr, "ERROR can not handle event\n");
                 return -1;
             };
-        }
-    }
+        };
+        {
+            struct timespec ts3;
+            clock_gettime(CLOCK_MONOTONIC, &ts3);
+            float const k = 0.05f;
+            int64_t dt = time_delta_mu(ts2, ts3);
+            float d1 = (float)dt - stats.process_ema;
+            stats.process_ema += k * d1;
+            stats.process_emv = (1.0f - k) * (stats.process_emv + k * d1 * d1);
+            if (FALSE) {
+                fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats.process_ema,
+                        sqrtf(stats.process_emv));
+            };
+        };
+    };
     fprintf(stderr, "Cleaning up...\n");
     return 0;
 }

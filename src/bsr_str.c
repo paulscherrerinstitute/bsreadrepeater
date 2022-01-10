@@ -26,3 +26,7 @@ ERRT bsr_str_split(char *str, int n, struct SplitMap *res) {
     res->n += 1;
     return 0;
 }
+
+int64_t time_delta_mu(struct timespec t1, struct timespec t2) {
+    return (int64_t)(t2.tv_sec * 1000000 + t2.tv_nsec / 1000) - (int64_t)(t1.tv_sec * 1000000 + t1.tv_nsec / 1000);
+}

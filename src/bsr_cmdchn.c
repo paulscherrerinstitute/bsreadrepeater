@@ -9,6 +9,8 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <err.h>
 #include <errno.h>
 #include <hex.h>
+#include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,6 +91,13 @@ void cleanup_struct_Handler_ptr(struct Handler **k) {
     }
 }
 
+void cleanup_gstring_ptr(GString **k) {
+    if (*k != NULL) {
+        g_string_free(*k, TRUE);
+        *k = NULL;
+    }
+}
+
 ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd) {
     int ec;
     cmd->ty = CmdNone;
@@ -100,7 +109,6 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
             int n = zmq_recv(self->socket, buf, N - 8, ZMQ_DONTWAIT);
             if (n == -1) {
                 if (errno == EAGAIN) {
-                    fprintf(stderr, "WARN command input not ready\n");
                     break;
                 } else if (errno == EFSM) {
                     fprintf(stderr, "ERROR command recv: socket in wrong state\n");
@@ -111,11 +119,91 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     bsr_cmdchn_socket_reopen(self, poller);
                 };
             } else {
+                buf[n] = 0;
                 fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
                 if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
                     zmq_send(self->socket, "exit", 4, 0);
-                } else if (n > 11 && memcmp("add-source,", buf, 11) == 0) {
+                } else if (n == 5 && memcmp("stats", buf, 5) == 0) {
+                    GString *str = g_string_new("");
+                    char s[256];
+                    snprintf(s, sizeof(s), "received %" PRIu64 "\n", self->stats->received);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "sent %" PRIu64 "\n", self->stats->sentok);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "small buf %" PRIu64 "\n", self->stats->recv_buf_too_small);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "busy %" PRIu64 "\n", self->stats->eagain);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "busy mp %" PRIu64 "\n", self->stats->eagain_multipart);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "poll avg %7.0f var %7.0f\n", self->stats->poll_wait_ema,
+                             sqrtf(self->stats->poll_wait_emv));
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "process avg %7.0f var %7.0f\n", self->stats->process_ema,
+                             sqrtf(self->stats->process_emv));
+                    g_string_append(str, s);
+                    zmq_send(self->socket, str->str, str->len, 0);
+                    g_string_free(str, TRUE);
+                } else if (n > 12 && memcmp("stats-source", buf, 12) == 0) {
+                    GString *str = g_string_new("");
+                    struct SplitMap sm;
+                    bsr_str_split((char *)buf, n, &sm);
+                    if (sm.n == 2) {
+                        struct Handler *h2 = handler_list_find_by_input_addr_2(self->handler_list, sm.beg[1]);
+                        if (h2 != NULL) {
+                            struct bsr_chnhandler *h = &h2->handler.src;
+                            char s[256];
+                            snprintf(s, sizeof(s), "received %" PRIu64 "\n", h->received);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "sent %" PRIu64 "\n", h->sentok);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "received bytes %" PRIu64 "\n", h->recv_bytes);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", h->sent_bytes);
+                            g_string_append(str, s);
+                            GList *it2 = h->socks_out;
+                            while (it2 != NULL) {
+                                struct sockout *so = it2->data;
+                                snprintf(s, sizeof(s), "  Out: %s\n", so->addr);
+                                g_string_append(str, s);
+                                snprintf(s, sizeof(s), "    sent count %" PRIu64 "\n", so->sent_count);
+                                g_string_append(str, s);
+                                snprintf(s, sizeof(s), "    sent bytes %" PRIu64 "\n", so->sent_bytes);
+                                g_string_append(str, s);
+                                snprintf(s, sizeof(s), "    busy %" PRIu64 "\n", so->eagain);
+                                g_string_append(str, s);
+                                snprintf(s, sizeof(s), "    busy mp %" PRIu64 "\n", so->eagain_multipart);
+                                g_string_append(str, s);
+                                it2 = it2->next;
+                            };
+                        };
+                    };
+                    zmq_send(self->socket, str->str, str->len, 0);
+                    g_string_free(str, TRUE);
+                } else if (n >= 12 && memcmp("list-sources", buf, 12) == 0) {
+                    GList *it = self->handler_list->list;
+                    GString *str = g_string_new("");
+                    while (it != NULL) {
+                        struct Handler *handler = it->data;
+                        if (handler->kind == SourceHandler) {
+                            struct bsr_chnhandler *ch = &handler->handler.src;
+                            g_string_append(str, ch->addr_inp);
+                            g_string_append(str, "\n");
+                            GList *it2 = ch->socks_out;
+                            while (it2 != NULL) {
+                                struct sockout *so = it2->data;
+                                g_string_append(str, " Out: ");
+                                g_string_append(str, so->addr);
+                                g_string_append(str, "\n");
+                                it2 = it2->next;
+                            };
+                        };
+                        it = it->next;
+                    };
+                    zmq_send(self->socket, str->str, str->len, 0);
+                    g_string_free(str, TRUE);
+                } else if (n >= 11 && memcmp("add-source,", buf, 11) == 0) {
                     struct SplitMap sm;
                     bsr_str_split((char *)buf, n, &sm);
                     if (sm.n != 2) {
@@ -140,6 +228,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             handler = NULL;
                         };
                     };
+                    char *rep = "add-source: done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n > 11 && memcmp("add-output,", buf, 11) == 0) {
                     struct SplitMap sm;
                     bsr_str_split((char *)buf, n, &sm);
@@ -161,6 +251,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             };
                         };
                     };
+                    char *rep = "add-output: done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-source", buf, 13) == 0) {
                     struct SplitMap sm;
                     bsr_str_split((char *)buf, n, &sm);
@@ -178,9 +270,12 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             ec = handler_list_remove(self->handler_list, h);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not remove handler from handler-list\n");
+                            } else {
                             };
                         };
                     };
+                    char *rep = "remove-source: done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-output", buf, 13) == 0) {
                     struct SplitMap sm;
                     bsr_str_split((char *)buf, n, &sm);
@@ -202,20 +297,22 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             };
                         };
                     };
+                    char *rep = "remove-output: done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
                 };
                 // TODO only try more if multipart. REQ must be matched by
                 // REP.
-                do_recv = 0;
-                self->state = SEND;
-                ec = zmq_poller_modify(poller->poller, self->socket, ZMQ_POLLOUT);
+                // do_recv = 0;
+                // self->state = SEND;
+                // ec = zmq_poller_modify(poller->poller, self->socket, ZMQ_POLLOUT);
                 // TODO capture zmq error details. caller does not know whether
                 // some returned error means that `errno` is set to some valid
                 // value, and also not whether `errnor` might point to some
                 // zmq-specific error-code.
-                if (ec == -1) {
-                    fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));
-                };
-                NZRET(ec);
+                // if (ec == -1) {
+                //    fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));
+                //};
+                // NZRET(ec);
             };
         };
     } else if (self->state == SEND) {

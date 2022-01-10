@@ -29,14 +29,17 @@ int bsr_statistics_init(struct bsr_statistics *self) {
     self->eagain = 0;
     self->eagain_multipart = 0;
     self->recv_buf_too_small = 0;
+    self->poll_wait_ema = 0.0;
+    self->poll_wait_emv = 0.0;
     return 0;
 }
 
 uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
+    struct timespec t1 = self->last_print_ts;
     uint64_t dt =
-        (ts.tv_sec - self->last_print_ts.tv_sec) * 1000 + (ts.tv_nsec - self->last_print_ts.tv_nsec) / 1000000;
+        (uint64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000) - (uint64_t)(t1.tv_sec * 1000 + t1.tv_nsec / 1000000);
     if (dt > UINT32_MAX) {
         dt = UINT32_MAX;
     };
@@ -55,12 +58,6 @@ ERRT bsr_statistics_print_now(struct bsr_statistics *self) {
 
 enum HandlerState {
     RECV = 1,
-};
-
-struct sockout {
-    void *sock;
-    char addr[ADDR_CAP];
-    int in_multipart;
 };
 
 void cleanup_zmq_socket(void **k) {
@@ -117,6 +114,8 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->sentok = 0;
     self->eagain = 0;
     self->eagain_multipart = 0;
+    self->recv_bytes = 0;
+    self->sent_bytes = 0;
     self->stats = stats;
     self->socks_out = NULL;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
@@ -147,6 +146,10 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
     strncpy(data->addr, addr, ADDR_CAP);
     data->addr[ADDR_CAP - 1] = 0;
     data->in_multipart = 0;
+    data->sent_count = 0;
+    data->sent_bytes = 0;
+    data->eagain = 0;
+    data->eagain_multipart = 0;
     void *sock __attribute__((cleanup(cleanup_zmq_socket))) = zmq_socket(self->poller->ctx, ZMQ_PUSH);
     ZMQ_NULLRET(sock);
     ec = set_sndhwm(sock, SNDHWM);
@@ -239,6 +242,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     return -1;
                 };
             } else {
+                self->recv_bytes += n;
                 char *buf = zmq_msg_data(&msgin);
                 self->received += 1;
                 self->stats->received += 1;
@@ -271,21 +275,22 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 };
                 GList *it = self->socks_out;
                 while (it != NULL) {
-                    struct sockout *data = it->data;
-                    void *so = data->sock;
+                    struct sockout *so = it->data;
                     zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
                     ec = zmq_msg_init(&msgout);
                     ZMQ_NEGONE(ec);
                     ec = zmq_msg_copy(&msgout, &msgin);
                     ZMQ_NEGONE(ec);
-                    int n2 = zmq_msg_send(&msgout, so, sndflags);
+                    int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
                     if (n2 == -1) {
                         if (errno == EAGAIN) {
                             // Output can't keep up. Drop message.
-                            if (data->in_multipart == 1) {
+                            if (so->in_multipart == 1) {
+                                so->eagain_multipart += 1;
                                 self->eagain_multipart += 1;
                                 self->stats->eagain_multipart += 1;
                             } else {
+                                so->eagain += 1;
                                 self->eagain += 1;
                                 self->stats->eagain += 1;
                             }
@@ -298,12 +303,15 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         return -1;
                     } else {
                         // Message is accepted by zmq.
+                        so->sent_count += 1;
+                        so->sent_bytes += n2;
                         self->sentok += 1;
+                        self->sent_bytes += n2;
                         self->stats->sentok += 1;
                         if (more == 1) {
-                            data->in_multipart = 1;
+                            so->in_multipart = 1;
                         } else {
-                            data->in_multipart = 0;
+                            so->in_multipart = 0;
                         };
                     };
                     it = it->next;
@@ -314,7 +322,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         fprintf(stderr, "chnhandler unknown state: %d\n", self->state);
         return -1;
     };
-    if (bsr_statistics_ms_since_last_print(self->stats) > 2000) {
+    if (bsr_statistics_ms_since_last_print(self->stats) > 4000) {
         bsr_statistics_print_now(self->stats);
     };
     return 0;

@@ -20,10 +20,24 @@ struct bsr_statistics {
     uint64_t eagain_multipart;
     uint64_t recv_buf_too_small;
     struct timespec last_print_ts;
+    float poll_wait_ema;
+    float poll_wait_emv;
+    float process_ema;
+    float process_emv;
 };
 
 int bsr_statistics_init(struct bsr_statistics *self);
 uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self);
+
+struct sockout {
+    void *sock;
+    char addr[ADDR_CAP];
+    int in_multipart;
+    uint64_t sent_count;
+    uint64_t sent_bytes;
+    uint64_t eagain;
+    uint64_t eagain_multipart;
+};
 
 struct bsr_chnhandler {
     struct bsr_poller *poller;
@@ -37,6 +51,8 @@ struct bsr_chnhandler {
     uint64_t sentok;
     uint64_t eagain;
     uint64_t eagain_multipart;
+    uint64_t recv_bytes;
+    uint64_t sent_bytes;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
 };
