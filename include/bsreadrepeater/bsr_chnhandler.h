@@ -19,6 +19,8 @@ struct bsr_statistics {
     uint64_t eagain;
     uint64_t eagain_multipart;
     uint64_t recv_buf_too_small;
+    uint64_t recv_bytes;
+    uint64_t sent_bytes;
     struct timespec last_print_ts;
     float poll_wait_ema;
     float poll_wait_emv;
@@ -49,8 +51,15 @@ struct bsr_chnhandler {
     uint32_t mpmsgc;
     void *sock_inp;
     GList *socks_out;
-    struct timespec last_print_ts;
+    char *buf;
+    int dh_compr;
+    int printed_compr_unsup;
+    struct timespec last_remember_channels;
+    GArray *channels;
     uint64_t received;
+    uint64_t mhparsed;
+    uint64_t dhparsed;
+    uint64_t dhdecompr;
     uint64_t sentok;
     uint64_t eagain;
     uint64_t eagain_multipart;
@@ -65,6 +74,6 @@ struct bsr_chnhandler {
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats);
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller);
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);

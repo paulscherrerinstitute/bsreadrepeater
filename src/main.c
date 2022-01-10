@@ -135,7 +135,8 @@ ERRT handlers_init(struct Handler *self, struct bsr_poller *poller) {
     return 0;
 }
 
-ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd) {
+ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd,
+                         struct timespec tspoll) {
     int ec;
     if (0) {
         fprintf(stderr, "handlers_handle_msg  kind %d  self %p\n", self->kind, (void *)self);
@@ -148,7 +149,7 @@ ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct
         break;
     }
     case SourceHandler: {
-        ec = bsr_chnhandler_handle_event(&self->handler.src, poller);
+        ec = bsr_chnhandler_handle_event(&self->handler.src, poller, tspoll);
         NZRET(ec);
         break;
     }
@@ -339,7 +340,7 @@ int main_inner(int argc, char **argv) {
             zmq_poller_event_t *ev = evs + i;
             if (ev->user_data != NULL) {
                 struct ReceivedCommand cmd = {0};
-                ec = handlers_handle_msg(ev->user_data, &poller, &cmd);
+                ec = handlers_handle_msg(ev->user_data, &poller, &cmd, ts2);
                 if (ec != 0) {
                     fprintf(stderr, "handle via user-data GOT %d\n", ec);
                 };

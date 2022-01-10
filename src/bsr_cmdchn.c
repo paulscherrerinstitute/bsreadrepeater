@@ -133,6 +133,10 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     g_string_append(str, s);
                     snprintf(s, sizeof(s), "sent %" PRIu64 "\n", self->stats->sentok);
                     g_string_append(str, s);
+                    snprintf(s, sizeof(s), "recv bytes %" PRIu64 "\n", self->stats->recv_bytes);
+                    g_string_append(str, s);
+                    snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", self->stats->sent_bytes);
+                    g_string_append(str, s);
                     snprintf(s, sizeof(s), "small buf %" PRIu64 "\n", self->stats->recv_buf_too_small);
                     g_string_append(str, s);
                     snprintf(s, sizeof(s), "busy %" PRIu64 "\n", self->stats->eagain);
@@ -158,6 +162,12 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             char s[256];
                             snprintf(s, sizeof(s), "received %" PRIu64 "\n", h->received);
                             g_string_append(str, s);
+                            snprintf(s, sizeof(s), "main header parsed %" PRIu64 "\n", h->mhparsed);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "data header parsed %" PRIu64 "\n", h->dhparsed);
+                            g_string_append(str, s);
+                            snprintf(s, sizeof(s), "data header decompressed %" PRIu64 "\n", h->dhdecompr);
+                            g_string_append(str, s);
                             snprintf(s, sizeof(s), "sent %" PRIu64 "\n", h->sentok);
                             g_string_append(str, s);
                             snprintf(s, sizeof(s), "received bytes %" PRIu64 "\n", h->recv_bytes);
@@ -168,6 +178,11 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             g_string_append(str, s);
                             snprintf(s, sizeof(s), "json parse errors %" PRIu64 "\n", h->json_parse_errors);
                             g_string_append(str, s);
+                            for (guint i1 = 0; i1 < h->channels->len; i1 += 1) {
+                                char **base = (char **)h->channels->data;
+                                snprintf(s, sizeof(s), "Channel: %s\n", *(base + i1));
+                                g_string_append(str, s);
+                            }
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;

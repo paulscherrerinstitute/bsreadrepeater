@@ -4,6 +4,7 @@ License: GNU General Public License v3.0
 Authors: Dominik Werder <dominik.werder@gmail.com>
 */
 
+#include <bitshuffle.h>
 #include <bsr_chnhandler.h>
 #include <bsr_json.h>
 #include <bsr_sockhelp.h>
@@ -11,6 +12,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <errno.h>
 #include <hex.h>
 #include <inttypes.h>
+#include <lz4.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -51,8 +53,9 @@ ERRT bsr_statistics_print_now(struct bsr_statistics *self) {
     struct bsr_statistics *st = self;
     fprintf(stderr,
             "received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64
-            "  recv_buf_too_small %" PRIu64 "\n",
-            st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small);
+            "  recv_buf_too_small %" PRIu64 "  recv bytes %" PRIu64 "  sent bytes %" PRIu64 "\n",
+            st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small, st->recv_bytes,
+            st->sent_bytes);
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
     return 0;
 }
@@ -70,6 +73,14 @@ void cleanup_zmq_socket(void **k) {
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     int ec;
+    if (self->buf != NULL) {
+        free(self->buf);
+        self->buf = NULL;
+    }
+    if (self->channels != NULL) {
+        g_array_free(self->channels, TRUE);
+        self->channels = NULL;
+    }
     if (self->sock_inp != NULL) {
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
         if (ec == -1) {
@@ -103,6 +114,21 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     return 0;
 }
 
+void clear_channel_element(void *k) {
+    char **ptr = (char **)k;
+    if (*ptr != NULL) {
+        free(*ptr);
+        *ptr = NULL;
+    }
+}
+
+void cleanup_struct_sockout_ptr(struct sockout **k) {
+    if (*k != NULL) {
+        free(*k);
+        *k = NULL;
+    }
+}
+
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats) {
     int ec;
@@ -114,6 +140,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->more_last = 0;
     self->mpc = 0;
     self->mpmsgc = 0;
+    self->printed_compr_unsup = 0;
     self->received = 0;
     self->sentok = 0;
     self->eagain = 0;
@@ -121,10 +148,18 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->recv_bytes = 0;
     self->sent_bytes = 0;
     self->bsread_errors = 0;
+    self->mhparsed = 0;
+    self->dhparsed = 0;
+    self->dhdecompr = 0;
     self->json_parse_errors = 0;
     self->stats = stats;
     self->socks_out = NULL;
-    clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
+    self->buf = malloc(1024 * 128);
+    NULLRET(self->buf);
+    clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);
+    self->channels = g_array_new(FALSE, FALSE, sizeof(void *));
+    NULLRET(self->channels);
+    g_array_set_clear_func(self->channels, clear_channel_element);
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
     ec = set_rcvhwm(self->sock_inp, RCVHWM);
@@ -136,13 +171,6 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     ec = zmq_poller_add(poller->poller, self->sock_inp, user_data, ZMQ_POLLIN);
     ZMQ_NEGONE(ec);
     return 0;
-}
-
-void cleanup_struct_sockout_ptr(struct sockout **k) {
-    if (*k != NULL) {
-        free(*k);
-        *k = NULL;
-    }
 }
 
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
@@ -221,7 +249,7 @@ void cleanup_zmq_msg(struct zmq_msg_t *k) {
     }
 }
 
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller) {
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll) {
     poller = poller;
     int ec;
     int sockflags;
@@ -249,6 +277,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 }
             } else {
                 self->recv_bytes += n;
+                self->stats->recv_bytes += n;
                 char *buf = zmq_msg_data(&msgin);
                 self->received += 1;
                 self->stats->received += 1;
@@ -275,6 +304,10 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     to_hex(hexbuf, (uint8_t *)buf, nn);
                     fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, hexbuf, rawmax, buf);
                 }
+                if (FALSE) {
+                    // Decompress
+                    // bshuf_bitunshuffle();
+                }
                 if (self->more_last == 1) {
                     self->mpc += 1;
                 } else {
@@ -285,17 +318,76 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     sndflags |= ZMQ_SNDMORE;
                 } else {
                 }
-                if ((self->mpc == 0 || self->mpc == 1)) {
+                if (self->mpc == 0) {
+                    self->dh_compr = 0;
                     GString *log = g_string_new("");
-                    if (json_parse(zmq_msg_data(&msgin), n, log) != 0) {
+                    struct bsread_main_header header;
+                    if (json_parse_main_header(buf, n, &header, log) != 0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 100) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
                             fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, n, 32, (char *)zmq_msg_data(&msgin), hexbuf);
+                                    self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
                         }
                     } else {
-                        if ((self->mpmsgc % 1000) == 0) {
+                        self->mhparsed += 1;
+                        self->dh_compr = header.compr;
+                        if (FALSE && (self->mpmsgc % 300) == 0) {
+                            fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\ncompr: %d\n%s\n-----\n", self->addr_inp,
+                                    self->mpmsgc, self->mpc, header.compr, log->str);
+                        }
+                    }
+                    g_string_free(log, TRUE);
+                }
+                if (self->mpc == 1) {
+                    char const *mb = (char *)zmq_msg_data(&msgin);
+                    char const *jsstr = mb;
+                    int jslen = n;
+                    GString *log = g_string_new("");
+                    if (self->dh_compr == 1) {
+                        if (self->printed_compr_unsup < 10) {
+                            fprintf(stderr, "ERROR bitshuffle not yet supported for data header compression\n");
+                            self->printed_compr_unsup += 1;
+                        }
+                    }
+                    if (self->dh_compr == 2) {
+                        int b;
+                        char *p = (char *)&b;
+                        p[0] = mb[3];
+                        p[1] = mb[2];
+                        p[2] = mb[1];
+                        p[3] = mb[0];
+                        ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, 1024 * 128);
+                        if (ec < 0) {
+                            if (self->printed_compr_unsup < 10) {
+                                fprintf(stderr, "lz4 decompress error %d  len %d\n", ec, b);
+                                self->printed_compr_unsup += 1;
+                            }
+                        } else {
+                            jsstr = self->buf;
+                            jslen = b;
+                            self->dhdecompr += 1;
+                        }
+                    }
+                    int do_remember_channels = 0;
+                    if (tspoll.tv_sec >= self->last_remember_channels.tv_sec + 2) {
+                        self->last_remember_channels = tspoll;
+                        do_remember_channels = 1;
+                    }
+                    struct bsread_data_header header = {0};
+                    if (do_remember_channels) {
+                        header.channels = self->channels;
+                    }
+                    if (json_parse_data_header(jsstr, jslen, &header, log) != 0) {
+                        self->json_parse_errors += 1;
+                        if (self->json_parse_errors < 100) {
+                            to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
+                            fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
+                                    self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
+                        }
+                    } else {
+                        self->dhparsed += 1;
+                        if (FALSE && (self->mpmsgc % 300) == 0) {
                             fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\n%s\n-----\n", self->addr_inp, self->mpmsgc,
                                     self->mpc, log->str);
                         }
@@ -338,6 +430,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                             self->sentok += 1;
                             self->sent_bytes += n2;
                             self->stats->sentok += 1;
+                            self->stats->sent_bytes += n2;
                             if (more == 1) {
                                 so->in_multipart = 1;
                             } else {
