@@ -7,13 +7,15 @@ Input sources and output sockets can be added and removed at runtime.
 
 # Binaries for RHEL 7
 
-Todo: add the link.
+https://data-api.psi.ch/distri/bsrep-amd64-rhel7.tgz
 
 
 # Run the application
 
+Start via the shell wrapper to use the packaged libzmq:
+
 ```
-./bsrep <CMDADDR> [CMDFILE]
+path/to/bsrep.sh <CMDADDR> [CMDFILE]
 ```
 
 Configuration is done by sending zmq messages to the command socket.
@@ -42,17 +44,25 @@ All commands are accessible by sending a zmq message to the `REP` socket at `CMD
 
 `add-source,SOURCE` where `SOURCE` is e.g. "tcp://source.psi.ch:9999".
 
+This lets the repeater maintain a connection to the source.
+Messages will be always pulled from the source, even when no outputs are created yet
+or none of the outputs has a connected client.
+
 
 ## Remove a source
 
 `remove-source,SOURCE`
+
+Removes the given source as well as all associated outputs.
 
 
 ## Add output to a source
 
 `add-output,SOURCE,OUTPUT`
 where `SOURCE` is e.g. "tcp://source.psi.ch:9999"
-and `OUTPUT` e.g. "tcp://127.0.0.1:4321".
+and `OUTPUT` e.g. "tcp://0.0.0.0:4321".
+
+Creates a PUSH socket on the given `OUTPUT` where clients can connect to.
 
 
 ## Remove output from a source
@@ -69,18 +79,27 @@ and `OUTPUT` e.g. "tcp://127.0.0.1:4321".
 
 `stats`
 
+Reply contains among others: total number of received and send messages and bytes.
 
-## Statistics for specific source and its outputs
+
+## Statistics for a specific source and its outputs
 
 `stats-source,SOURCE`
+
+Reply contains received and sent messages for that source and its outputs, as well as
+the current set of channels on that source.
 
 
 ## Exit the repeater
 
-Send via a zmq REQ socket the message "exit" to the command socket.
+`exit`
 
 
-# Planned improvements
+# Planned developments
 
 * Provide more detailed statistics on command.
 * Gather basic statistics from the bsread messages passing by.
+* Detect bsread protocol errors.
+* Detect erratic source behavior, like too high event frequency.
+* Check for ordering of pulse ids and timestamps.
+* Analyze event frequency for each channel.
