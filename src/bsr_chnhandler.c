@@ -81,6 +81,10 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
         g_array_free(self->channels, TRUE);
         self->channels = NULL;
     }
+    if (self->chnmap != NULL) {
+        channel_map_release(self->chnmap);
+        self->chnmap = NULL;
+    }
     if (self->sock_inp != NULL) {
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
         if (ec == -1) {
@@ -159,6 +163,8 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);
     self->channels = g_array_new(FALSE, FALSE, sizeof(void *));
     NULLRET(self->channels);
+    self->chnmap = channel_map_new();
+    NULLRET(self->chnmap);
     g_array_set_clear_func(self->channels, clear_channel_element);
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
@@ -252,6 +258,7 @@ void cleanup_zmq_msg(struct zmq_msg_t *k) {
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll) {
     poller = poller;
     int ec;
+    uint64_t now = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
     int sockflags;
     {
         size_t vl = sizeof(sockflags);
@@ -322,9 +329,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     self->dh_compr = 0;
                     GString *log = g_string_new("");
                     struct bsread_main_header header;
-                    if (json_parse_main_header(buf, n, &header, log) != 0) {
+                    if (json_parse_main_header(buf, n, &header, &log) != 0) {
                         self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 100) {
+                        if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
                             fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
                                     self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
@@ -369,18 +376,15 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                             self->dhdecompr += 1;
                         }
                     }
-                    int do_remember_channels = 0;
-                    if (tspoll.tv_sec >= self->last_remember_channels.tv_sec + 2) {
+                    struct channel_map *chnmap = NULL;
+                    if (TRUE || (tspoll.tv_sec >= self->last_remember_channels.tv_sec + 2)) {
                         self->last_remember_channels = tspoll;
-                        do_remember_channels = 1;
+                        chnmap = self->chnmap;
                     }
                     struct bsread_data_header header = {0};
-                    if (do_remember_channels) {
-                        header.channels = self->channels;
-                    }
-                    if (json_parse_data_header(jsstr, jslen, &header, log) != 0) {
+                    if (json_parse_data_header(jsstr, jslen, &header, now, chnmap, &log) != 0) {
                         self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 100) {
+                        if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
                             fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
                                     self->mpmsgc, self->mpc, n, 32, mb, hexbuf);

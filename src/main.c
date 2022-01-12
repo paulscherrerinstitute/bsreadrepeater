@@ -374,6 +374,7 @@ int main_inner(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
+    fprintf(stderr, "bsrep 0.1.3\n");
     int x = main_inner(argc, argv);
     fprintf(stderr, "bsrep exit(%d)\n", x);
     return x;

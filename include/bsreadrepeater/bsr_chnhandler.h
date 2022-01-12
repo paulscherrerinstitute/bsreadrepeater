@@ -56,6 +56,7 @@ struct bsr_chnhandler {
     int printed_compr_unsup;
     struct timespec last_remember_channels;
     GArray *channels;
+    struct channel_map *chnmap;
     uint64_t received;
     uint64_t mhparsed;
     uint64_t dhparsed;

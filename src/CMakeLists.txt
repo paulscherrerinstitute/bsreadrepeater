@@ -23,6 +23,7 @@ bsr_json.cpp
 ./bitshuffle/bitshuffle_core.c
 ./bitshuffle/bitshuffle_core.h
 )
+set_property(TARGET bsrep PROPERTY CXX_STANDARD 20)
 target_compile_options(bsrep PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter)
 target_include_directories(bsrep PRIVATE "../include/bsreadrepeater")
 target_include_directories(bsrep PRIVATE "../../../software/rapidjson/include")

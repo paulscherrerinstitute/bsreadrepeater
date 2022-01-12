@@ -5,6 +5,23 @@ A single source can be replayed on multiple outputs.
 Input sources and output sockets can be added and removed at runtime.
 
 
+# Project Goals
+
+✓ Low, stable and predictable memory and cpu usage.
+
+✓ Tested under Valgrind with real bsread sources.
+
+✓ Configure attached sources and outputs at runtime and startup.
+
+✓ Maintain basic throughput statistics and protocol error counters.
+
+✓ Parse bsread json headers and maintain event rate moving averages per channel.
+
+• Block sources with too high event rate (free-running sources) and re-enable periodically.
+
+• Block sources with bsread protocol errors.
+
+
 # Binaries for RHEL 7
 
 https://data-api.psi.ch/distri/bsrep-amd64-rhel7.tgz

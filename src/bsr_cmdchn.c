@@ -130,25 +130,25 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     GString *str = g_string_new("");
                     char s[256];
                     snprintf(s, sizeof(s), "received %" PRIu64 "\n", self->stats->received);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "sent %" PRIu64 "\n", self->stats->sentok);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "recv bytes %" PRIu64 "\n", self->stats->recv_bytes);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", self->stats->sent_bytes);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "small buf %" PRIu64 "\n", self->stats->recv_buf_too_small);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "busy %" PRIu64 "\n", self->stats->eagain);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "busy mp %" PRIu64 "\n", self->stats->eagain_multipart);
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "poll avg %7.0f var %7.0f\n", self->stats->poll_wait_ema,
                              sqrtf(self->stats->poll_wait_emv));
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     snprintf(s, sizeof(s), "process avg %7.0f var %7.0f\n", self->stats->process_ema,
                              sqrtf(self->stats->process_emv));
-                    g_string_append(str, s);
+                    str = g_string_append(str, s);
                     zmq_send(self->socket, str->str, str->len, 0);
                     g_string_free(str, TRUE);
                 } else if (n > 12 && memcmp("stats-source", buf, 12) == 0) {
@@ -161,41 +161,39 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             struct bsr_chnhandler *h = &h2->handler.src;
                             char s[256];
                             snprintf(s, sizeof(s), "received %" PRIu64 "\n", h->received);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "main header parsed %" PRIu64 "\n", h->mhparsed);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "data header parsed %" PRIu64 "\n", h->dhparsed);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "data header decompressed %" PRIu64 "\n", h->dhdecompr);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "sent %" PRIu64 "\n", h->sentok);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "received bytes %" PRIu64 "\n", h->recv_bytes);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", h->sent_bytes);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "bsread errors %" PRIu64 "\n", h->bsread_errors);
-                            g_string_append(str, s);
+                            str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "json parse errors %" PRIu64 "\n", h->json_parse_errors);
-                            g_string_append(str, s);
-                            for (guint i1 = 0; i1 < h->channels->len; i1 += 1) {
-                                char **base = (char **)h->channels->data;
-                                snprintf(s, sizeof(s), "Channel: %s\n", *(base + i1));
-                                g_string_append(str, s);
-                            }
+                            str = g_string_append(str, s);
+                            str = g_string_append(str, "+++   ++++\n");
+                            channel_map_str(h->chnmap, &str);
+                            str = g_string_append(str, "---   ----\n");
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;
                                 snprintf(s, sizeof(s), "  Out: %s\n", so->addr);
-                                g_string_append(str, s);
+                                str = g_string_append(str, s);
                                 snprintf(s, sizeof(s), "    sent count %" PRIu64 "\n", so->sent_count);
-                                g_string_append(str, s);
+                                str = g_string_append(str, s);
                                 snprintf(s, sizeof(s), "    sent bytes %" PRIu64 "\n", so->sent_bytes);
-                                g_string_append(str, s);
+                                str = g_string_append(str, s);
                                 snprintf(s, sizeof(s), "    busy %" PRIu64 "\n", so->eagain);
-                                g_string_append(str, s);
+                                str = g_string_append(str, s);
                                 snprintf(s, sizeof(s), "    busy mp %" PRIu64 "\n", so->eagain_multipart);
-                                g_string_append(str, s);
+                                str = g_string_append(str, s);
                                 it2 = it2->next;
                             };
                         };
@@ -209,14 +207,14 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         struct Handler *handler = it->data;
                         if (handler->kind == SourceHandler) {
                             struct bsr_chnhandler *ch = &handler->handler.src;
-                            g_string_append(str, ch->addr_inp);
-                            g_string_append(str, "\n");
+                            str = g_string_append(str, ch->addr_inp);
+                            str = g_string_append(str, "\n");
                             GList *it2 = ch->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;
-                                g_string_append(str, " Out: ");
-                                g_string_append(str, so->addr);
-                                g_string_append(str, "\n");
+                                str = g_string_append(str, " Out: ");
+                                str = g_string_append(str, so->addr);
+                                str = g_string_append(str, "\n");
                                 it2 = it2->next;
                             };
                         };
