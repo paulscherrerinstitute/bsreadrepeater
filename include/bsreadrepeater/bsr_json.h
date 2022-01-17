@@ -17,6 +17,8 @@ struct channel_map;
 
 struct bsread_main_header {
     int compr;
+    uint64_t pulse;
+    uint64_t timestamp;
 };
 
 struct bsread_data_header {
@@ -25,7 +27,7 @@ struct bsread_data_header {
 
 ERRT json_parse_main_header(char const *str, int n, struct bsread_main_header *header, GString **log);
 ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
-                            struct channel_map *chnmap, GString **log);
+                            struct channel_map *chnmap, struct bsread_main_header *mh, GString **log);
 ERRT json_parse(char const *str, int n, GString **log);
 
 struct channel_map *channel_map_new();

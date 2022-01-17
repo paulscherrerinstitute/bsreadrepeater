@@ -24,6 +24,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #define SNDBUF (1024 * 128)
 
 static int const NBUF = 1024 * 128;
+static int const DECOMP_BUF_MAX = 1024 * 128;
 
 int bsr_statistics_init(struct bsr_statistics *self) {
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
@@ -84,6 +85,10 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     if (self->chnmap != NULL) {
         channel_map_release(self->chnmap);
         self->chnmap = NULL;
+    }
+    if (self->bsread_main_header != NULL) {
+        free(self->bsread_main_header);
+        self->bsread_main_header = NULL;
     }
     if (self->sock_inp != NULL) {
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
@@ -158,13 +163,18 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->json_parse_errors = 0;
     self->stats = stats;
     self->socks_out = NULL;
-    self->buf = malloc(1024 * 128);
+    self->buf = malloc(DECOMP_BUF_MAX);
     NULLRET(self->buf);
     clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);
     self->channels = g_array_new(FALSE, FALSE, sizeof(void *));
     NULLRET(self->channels);
     self->chnmap = channel_map_new();
     NULLRET(self->chnmap);
+    self->bsread_main_header = malloc(sizeof(struct bsread_main_header));
+    NULLRET(self->bsread_main_header);
+    self->bsread_main_header->compr = 0;
+    self->bsread_main_header->pulse = 0;
+    self->bsread_main_header->timestamp = 0;
     g_array_set_clear_func(self->channels, clear_channel_element);
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
@@ -255,6 +265,13 @@ void cleanup_zmq_msg(struct zmq_msg_t *k) {
     }
 }
 
+void cleanup_gstring(GString **k) {
+    if (*k != NULL) {
+        g_string_free(*k, TRUE);
+        *k = NULL;
+    }
+}
+
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll) {
     poller = poller;
     int ec;
@@ -291,12 +308,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 if (n > NBUF) {
                     self->stats->recv_buf_too_small += 1;
                 }
-                int more;
-                {
-                    size_t opt_val_len = sizeof(more);
-                    ec = zmq_getsockopt(self->sock_inp, ZMQ_RCVMORE, &more, &opt_val_len);
-                    ZMQ_NEGONE(ec);
-                }
+                int more = zmq_msg_more(&msgin);
                 int const NHEXBUF = 16;
                 char hexbuf[2 * NHEXBUF + 4];
                 if (PRINT_RECEIVED) {
@@ -311,10 +323,6 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     to_hex(hexbuf, (uint8_t *)buf, nn);
                     fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, hexbuf, rawmax, buf);
                 }
-                if (FALSE) {
-                    // Decompress
-                    // bshuf_bitunshuffle();
-                }
                 if (self->more_last == 1) {
                     self->mpc += 1;
                 } else {
@@ -327,9 +335,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                 }
                 if (self->mpc == 0) {
                     self->dh_compr = 0;
-                    GString *log = g_string_new("");
-                    struct bsread_main_header header;
-                    if (json_parse_main_header(buf, n, &header, &log) != 0) {
+                    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
+                    struct bsread_main_header *header = self->bsread_main_header;
+                    if (json_parse_main_header(buf, n, header, &log) != 0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
@@ -338,19 +346,18 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         }
                     } else {
                         self->mhparsed += 1;
-                        self->dh_compr = header.compr;
+                        self->dh_compr = header->compr;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
                             fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\ncompr: %d\n%s\n-----\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, header.compr, log->str);
+                                    self->mpmsgc, self->mpc, header->compr, log->str);
                         }
                     }
-                    g_string_free(log, TRUE);
                 }
                 if (self->mpc == 1) {
                     char const *mb = (char *)zmq_msg_data(&msgin);
                     char const *jsstr = mb;
                     int jslen = n;
-                    GString *log = g_string_new("");
+                    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
                     if (self->dh_compr == 1) {
                         if (self->printed_compr_unsup < 10) {
                             fprintf(stderr, "ERROR bitshuffle not yet supported for data header compression\n");
@@ -364,7 +371,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         p[1] = mb[2];
                         p[2] = mb[1];
                         p[3] = mb[0];
-                        ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, 1024 * 128);
+                        ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, DECOMP_BUF_MAX);
                         if (ec < 0) {
                             if (self->printed_compr_unsup < 10) {
                                 fprintf(stderr, "lz4 decompress error %d  len %d\n", ec, b);
@@ -382,7 +389,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         chnmap = self->chnmap;
                     }
                     struct bsread_data_header header = {0};
-                    if (json_parse_data_header(jsstr, jslen, &header, now, chnmap, &log) != 0) {
+                    if (json_parse_data_header(jsstr, jslen, &header, now, chnmap, self->bsread_main_header, &log) !=
+                        0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
@@ -396,7 +404,6 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                                     self->mpc, log->str);
                         }
                     }
-                    g_string_free(log, TRUE);
                 }
                 if (self->mpmsgc > 0) {
                     GList *it = self->socks_out;

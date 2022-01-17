@@ -41,6 +41,8 @@ struct sockout {
     uint64_t eagain_multipart;
 };
 
+struct bsread_main_header;
+
 struct bsr_chnhandler {
     struct bsr_poller *poller;
     void *user_data;
@@ -57,6 +59,7 @@ struct bsr_chnhandler {
     struct timespec last_remember_channels;
     GArray *channels;
     struct channel_map *chnmap;
+    struct bsread_main_header *bsread_main_header;
     uint64_t received;
     uint64_t mhparsed;
     uint64_t dhparsed;

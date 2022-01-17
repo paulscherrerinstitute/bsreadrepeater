@@ -37,6 +37,8 @@ struct channel_info {
     uint64_t ts_last_event;
     uint64_t dhcount;
     struct emaemv emav;
+    uint64_t bsread_last_pulse;
+    uint64_t bsread_last_timestamp;
 };
 
 struct channel_map {
@@ -117,16 +119,17 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
         if (!doc["pulse_id"].IsUint64()) {
             return 5;
         }
+        header->pulse = doc["pulse_id"].GetUint64();
         if (doc["global_timestamp"].IsObject()) {
             auto const &o = doc["global_timestamp"];
-            if (printc < 20) {
+            header->timestamp = o["sec"].GetUint64() * 1000000000 + o["ns"].GetUint64();
+            if (FALSE && printc < 20) {
                 printc += 1;
                 fprintf(stderr, "pulse %" PRIu64 "  ts  sec %" PRIu64 "  ns %" PRIu64 "\n", doc["pulse_id"].GetUint64(),
                         o["sec"].GetUint64(), o["ns"].GetUint64());
-                if (doc["NoKey"].IsNull()) {
-                    fprintf(stderr, "no key is null\n");
-                }
             }
+        } else {
+            header->timestamp = 0;
         }
         if (!doc["dh_compression"].IsNull() && !doc["dh_compression"].IsString()) {
             return 6;
@@ -154,7 +157,7 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
 }
 
 extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
-                                       struct channel_map *chnmap, GString **log) {
+                                       struct channel_map *chnmap, struct bsread_main_header *mh, GString **log) {
     rapidjson::Document doc;
     try {
         doc.Parse(str, n);
@@ -187,9 +190,13 @@ extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_dat
                                 e.emav.update(dt);
                                 e.ts_last_event = now;
                                 e.dhcount += 1;
+                                e.bsread_last_timestamp = mh->timestamp;
+                                e.bsread_last_pulse = mh->pulse;
                             } else {
                                 struct channel_info cin(now);
                                 cin.dhcount = 1;
+                                cin.bsread_last_timestamp = mh->timestamp;
+                                cin.bsread_last_pulse = mh->pulse;
                                 chnmap->map[std::string(n.GetString())] = cin;
                             }
                         }
@@ -227,6 +234,8 @@ extern "C" ERRT channel_map_str(struct channel_map *self, GString **out) {
         g_string_append_printf(*out, "name: %s", v.first.c_str());
         g_string_append_printf(*out, "  dhcount: %" PRIu64, v.second.dhcount);
         g_string_append_printf(*out, "  dt ema: %.0f / %.0f", v.second.emav.ema(), v.second.emav.emv());
+        g_string_append_printf(*out, "  pulse: %" PRIu64, v.second.bsread_last_pulse);
+        g_string_append_printf(*out, "  ts: %" PRIu64, v.second.bsread_last_timestamp);
         g_string_append(*out, "\n");
     }
     return 0;
