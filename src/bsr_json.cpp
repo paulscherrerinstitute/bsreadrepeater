@@ -5,6 +5,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 */
 
 #include <bsr_json.h>
+#include <cmath>
 #include <rapidjson/document.h>
 #include <stdio.h>
 #include <string>
@@ -233,7 +234,7 @@ extern "C" ERRT channel_map_str(struct channel_map *self, GString **out) {
         }
         g_string_append_printf(*out, "name: %s", v.first.c_str());
         g_string_append_printf(*out, "  dhcount: %" PRIu64, v.second.dhcount);
-        g_string_append_printf(*out, "  dt ema: %.0f / %.0f", v.second.emav.ema(), v.second.emav.emv());
+        g_string_append_printf(*out, "  dt ema: %.0f / %.0f", v.second.emav.ema(), sqrtf(v.second.emav.emv()));
         g_string_append_printf(*out, "  pulse: %" PRIu64, v.second.bsread_last_pulse);
         g_string_append_printf(*out, "  ts: %" PRIu64, v.second.bsread_last_timestamp);
         g_string_append(*out, "\n");
