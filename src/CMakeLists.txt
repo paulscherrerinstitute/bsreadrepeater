@@ -22,13 +22,17 @@ bsr_json.cpp
 ./bitshuffle/iochain.h
 ./bitshuffle/bitshuffle_core.c
 ./bitshuffle/bitshuffle_core.h
+../include/bsreadrepeater/bsr_ctx1.h
+bsr_ctx1.c
 )
+set_property(TARGET bsrep PROPERTY C_STANDARD 11)
 set_property(TARGET bsrep PROPERTY CXX_STANDARD 20)
 target_compile_options(bsrep PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter)
+target_include_directories(bsrep PRIVATE "../include")
 target_include_directories(bsrep PRIVATE "../include/bsreadrepeater")
 target_include_directories(bsrep PRIVATE "../../../software/rapidjson/include")
 target_include_directories(bsrep PRIVATE "./bitshuffle")
-#target_link_libraries(bsrep kappa)
+target_include_directories(bsrep PRIVATE "${ZeroMQ_ROOT}/../include")
 target_link_libraries(bsrep libzmq)
 target_link_libraries(bsrep PkgConfig::glib2pkg)
 target_link_libraries(bsrep m)

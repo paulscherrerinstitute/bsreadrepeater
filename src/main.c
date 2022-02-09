@@ -7,6 +7,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
 #include <bsr_cmdchn.h>
+#include <bsr_ctx1.h>
 #include <bsr_poller.h>
 #include <bsr_startupcmd.h>
 #include <bsr_str.h>
@@ -374,6 +375,12 @@ int main_inner(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
+    struct ctx1 __attribute__((cleanup(cleanup_ctx1))) ctx1 = {0};
+    struct ctx1_args args = {0};
+    args.ty = 1;
+    ctx1_run(&ctx1, &args);
+    return 0;
+    //
     fprintf(stderr, "bsrep 0.1.3\n");
     int x = main_inner(argc, argv);
     fprintf(stderr, "bsrep exit(%d)\n", x);
