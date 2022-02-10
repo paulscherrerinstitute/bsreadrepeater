@@ -66,9 +66,9 @@ ERRT bsr_cmdchn_socket_reopen_inner(struct bsr_cmdchn *self, struct bsr_poller *
     self->socket = zmq_socket(poller->ctx, ZMQ_REP);
     ZMQ_NULLRET(self->socket);
     ec = zmq_bind(self->socket, self->addr);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     ec = zmq_poller_add(poller->poller, self->socket, self->user_data, ZMQ_POLLIN);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     return 0;
 }
 

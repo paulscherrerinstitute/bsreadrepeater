@@ -32,11 +32,11 @@ ERRT bsr_startupcmd_init(struct bsr_startupcmd *self, struct bsr_poller *poller,
     self->sock_out = zmq_socket(poller->ctx, ZMQ_REQ);
     ZMQ_NULLRET(self->sock_out);
     ec = zmq_connect(self->sock_out, self->cmdaddr);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     ec = zmq_poller_add(poller->poller, self->sock_out, user_data, 0);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     ec = zmq_poller_add_fd(poller->poller, self->fd, user_data, ZMQ_POLLIN);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     return 0;
 }
 
@@ -56,15 +56,15 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
             self->wp += n;
             self->state = 1;
             ec = zmq_poller_modify_fd(self->poller->poller, self->fd, 0);
-            ZMQ_NEGONE(ec);
+            ZMQ_NEGONERET(ec);
             ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLOUT);
-            ZMQ_NEGONE(ec);
+            ZMQ_NEGONERET(ec);
         };
     } else if (self->state == 1) {
         int evs = 0;
         size_t evsl = sizeof(int);
         ec = zmq_getsockopt(self->sock_out, ZMQ_EVENTS, &evs, &evsl);
-        ZMQ_NEGONE(ec);
+        ZMQ_NEGONERET(ec);
         if ((evs & ZMQ_POLLOUT) != 0) {
             int nfound = 0;
             if (self->wp > self->rp) {
@@ -74,7 +74,7 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
                         *p1 = 0;
                         p1 += 1;
                         ec = zmq_send(self->sock_out, self->rp, strnlen(self->rp, 256), ZMQ_DONTWAIT);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                         memmove(self->buf, p1, self->wp - p1);
                         self->wp = self->buf + (self->wp - p1);
                         self->rp = self->buf;
@@ -92,37 +92,37 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
                 if (self->fd == -1) {
                     // if nothing parsed and file closed, remove from poller and close.
                     ec = zmq_poller_remove(self->poller->poller, self->sock_out);
-                    ZMQ_NEGONE(ec);
+                    ZMQ_NEGONERET(ec);
                 } else {
                     if (self->wp < self->ep) {
                         self->state = 0;
                         ec = zmq_poller_modify(self->poller->poller, self->sock_out, 0);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                         ec = zmq_poller_modify_fd(self->poller->poller, self->fd, ZMQ_POLLIN);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                     } else {
                         fprintf(stderr, "ERROR command line too long\n");
                         ec = zmq_poller_remove(self->poller->poller, self->sock_out);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                         ec = zmq_poller_remove_fd(self->poller->poller, self->fd);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                     };
                 };
             } else {
                 // Need to receive reply first.
                 self->state = 2;
                 ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLIN);
-                ZMQ_NEGONE(ec);
+                ZMQ_NEGONERET(ec);
             };
         };
     } else if (self->state == 2) {
         char gg[64];
         int n = zmq_recv(self->sock_out, gg, 64, ZMQ_DONTWAIT);
         if (n == -1) {
-            ZMQ_NEGONE(n);
+            ZMQ_NEGONERET(n);
         } else {
             ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLOUT);
-            ZMQ_NEGONE(ec);
+            ZMQ_NEGONERET(ec);
             self->state = 1;
         };
     };

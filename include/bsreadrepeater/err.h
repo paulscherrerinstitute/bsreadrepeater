@@ -20,7 +20,7 @@ typedef int ERRT;
         return -1;                                                                                                     \
     }
 
-#define ZMQ_NEGONE(ec)                                                                                                 \
+#define ZMQ_NEGONERET(ec)                                                                                              \
     if ((ec) == -1) {                                                                                                  \
         fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));                                                \
         return -1;                                                                                                     \

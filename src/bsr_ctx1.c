@@ -1,4 +1,5 @@
 #define ZMQ_BUILD_DRAFT_API
+#define _GNU_SOURCE
 #include <bsr_ctx1.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -75,22 +76,29 @@ static void *sub(void *args2) {
     return NULL;
 }
 
-ERRT ctx1_run(struct ctx1 *ctx1, struct ctx1_args *args) {
+ERRT ctx1_start(struct ctx1 *ctx1, struct ctx1_args *args) {
     int ec;
     args->ctx1 = ctx1;
     ec = pthread_create(&ctx1->thr1, NULL, sub, args);
+    NZRET(ec);
+    ctx1->thread_started = 1;
+    ec = pthread_setname_np(ctx1->thr1, "ctx1");
     NZRET(ec);
     return 0;
 }
 
 ERRT cleanup_ctx1(struct ctx1 *self) {
     int ec;
+    fprintf(stderr, "cleanup_ctx1\n");
     if (self != NULL) {
         self->stop = 1;
-        void *retval;
-        ec = pthread_join(self->thr1, &retval);
-        NZRET(ec);
-        fprintf(stderr, "joined ok  retval: %ld\n", (size_t)retval);
+        if (self->thread_started == 1) {
+            void *retval;
+            ec = pthread_join(self->thr1, &retval);
+            NZRET(ec);
+            fprintf(stderr, "joined ok  retval: %ld\n", (size_t)retval);
+            self->thread_started = 0;
+        }
     }
     return 0;
 }

@@ -31,13 +31,6 @@ enum HandlerState {
     RECV = 1,
 };
 
-void cleanup_zmq_socket(void **k) {
-    if (*k != NULL) {
-        zmq_close(*k);
-        *k = NULL;
-    }
-}
-
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
     int ec;
     if (self->buf != NULL) {
@@ -151,9 +144,9 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     ec = set_rcvbuf(self->sock_inp, RCVBUF);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     ec = zmq_poller_add(poller->poller, self->sock_inp, user_data, ZMQ_POLLIN);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     return 0;
 }
 
@@ -180,7 +173,7 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
         return -1;
     }
     ec = zmq_poller_add(self->poller->poller, sock, self->user_data, 0);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     data->sock = sock;
     sock = NULL;
     self->socks_out = g_list_append(self->socks_out, data);
@@ -191,9 +184,9 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
 ERRT bsr_chnhandler_close_sock(struct bsr_chnhandler *self, void *sock) {
     int ec;
     ec = zmq_poller_remove(self->poller->poller, sock);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     ec = zmq_close(sock);
-    ZMQ_NEGONE(ec);
+    ZMQ_NEGONERET(ec);
     return 0;
 }
 
@@ -379,9 +372,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         struct sockout *so = it->data;
                         zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
                         ec = zmq_msg_init(&msgout);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                         ec = zmq_msg_copy(&msgout, &msgin);
-                        ZMQ_NEGONE(ec);
+                        ZMQ_NEGONERET(ec);
                         int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
                         if (n2 == -1) {
                             if (errno == EAGAIN) {

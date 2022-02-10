@@ -10,6 +10,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <bsr_ctx1.h>
 #include <bsr_poller.h>
 #include <bsr_rep.h>
+#include <bsr_sockhelp.h>
 #include <bsr_startupcmd.h>
 #include <bsr_str.h>
 #include <err.h>
@@ -49,14 +50,33 @@ int main_inner(int const argc, char const *const *argv) {
     struct bsrep __attribute__((cleanup(cleanup_bsrep))) rep = {0};
     ec = bsrep_init(&rep, cmd_addr, startup_file);
     NZRET(ec);
-
-    ec = bsrep_run(&rep);
+    ec = bsrep_start(&rep);
     NZRET(ec);
+    return 0;
+}
 
+ERRT test_receive() {
+    int ec;
+    fprintf(stderr, "test_receive\n");
+    struct ctx1 __attribute__((cleanup(cleanup_ctx1))) ctx1 = {0};
+    struct ctx1_args args = {0};
+    args.ty = 1;
+    ctx1_start(&ctx1, &args);
+    struct bsrep __attribute__((cleanup(cleanup_bsrep))) rep = {0};
+    rep.do_polls_min = 20;
+    char const *cmd_addr = "tcp://127.0.0.1:4242";
+    ec = bsrep_init(&rep, cmd_addr, NULL);
+    NZRET(ec);
+    ec = bsrep_start(&rep);
+    NZRET(ec);
+    ec = req_rep_single(cmd_addr, "blabla", 6);
+    NZRET(ec);
     return 0;
 }
 
 int main(int const argc, char const *const *argv) {
+    int ec;
+    fprintf(stderr, "bsrep 0.2.0\n");
     {
         // For shared libs, make sure that we got dynamically linked against a compatible version.
         int maj, min, pat;
@@ -70,14 +90,22 @@ int main(int const argc, char const *const *argv) {
             return 1;
         };
     }
-    struct ctx1 __attribute__((cleanup(cleanup_ctx1))) ctx1 = {0};
-    struct ctx1_args args = {0};
-    args.ty = 1;
-    ctx1_run(&ctx1, &args);
-    return 0;
-    //
-    fprintf(stderr, "bsrep 0.1.3\n");
-    int x = main_inner(argc, argv);
-    fprintf(stderr, "bsrep exit(%d)\n", x);
-    return x;
+    int do_test = 0;
+    if (argc >= 2) {
+        if (strcmp("test", argv[1]) == 0) {
+            do_test = 1;
+        }
+    }
+    if (do_test) {
+        ec = test_receive();
+        if (ec != 0) {
+            fprintf(stderr, "ERROR test_receive failed\n");
+            return 1;
+        }
+        return 0;
+    } else {
+        int x = main_inner(argc, argv);
+        fprintf(stderr, "bsrep exit(%d)\n", x);
+        return x;
+    }
 }

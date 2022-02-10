@@ -1,5 +1,34 @@
 #include <bsr_sockhelp.h>
+#include <err.h>
 #include <zmq.h>
+
+ERRT cleanup_zmq_ctx(void **self) {
+    int ec;
+    if (self != NULL) {
+        if (*self != NULL) {
+            ec = zmq_ctx_term(*self);
+            if (ec != 0) {
+                fprintf(stderr, "ERROR zmq_ctx_term %d\n", ec);
+            }
+            *self = NULL;
+        }
+    }
+    return 0;
+}
+
+ERRT cleanup_zmq_socket(void **self) {
+    int ec;
+    if (self != NULL) {
+        if (*self != NULL) {
+            ec = zmq_close(*self);
+            if (ec != 0) {
+                fprintf(stderr, "ERROR zmq_close %d\n", ec);
+            }
+            *self = NULL;
+        }
+    }
+    return 0;
+}
 
 ERRT set_basic_sock_opts(void *sock) {
     int ec;
@@ -66,5 +95,29 @@ ERRT set_sndbuf(void *sock, int sndbuf) {
     if (ec == -1) {
         return -1;
     }
+    return 0;
+}
+
+ERRT req_rep_single(char const *addr, char const *msg, int n) {
+    int ec;
+    void *ctx __attribute__((cleanup(cleanup_zmq_ctx))) = NULL;
+    ctx = zmq_ctx_new();
+    ZMQ_NULLRET(ctx);
+    void *sock __attribute__((cleanup(cleanup_zmq_socket))) = NULL;
+    sock = zmq_socket(ctx, ZMQ_REQ);
+    ZMQ_NULLRET(ctx);
+    {
+        int timeout = 1000;
+        ec = zmq_setsockopt(sock, ZMQ_RCVTIMEO, &timeout, sizeof(int));
+        NZRET(ec);
+    }
+    ec = zmq_connect(sock, addr);
+    ZMQ_NEGONERET(ec);
+    ec = zmq_send(sock, msg, n, 0);
+    ZMQ_NEGONERET(ec);
+    char buf[64];
+    ec = zmq_recv(sock, buf, sizeof(buf), 0);
+    ZMQ_NEGONERET(ec);
+    fprintf(stderr, "req_rep_single DONE\n");
     return 0;
 }
