@@ -1,11 +1,22 @@
-/*
-Project: bsreadrepeater
-License: GNU General Public License v3.0
-Authors: Dominik Werder <dominik.werder@gmail.com>
-*/
-
 #include <bsr_sockhelp.h>
 #include <zmq.h>
+
+ERRT set_basic_sock_opts(void *sock) {
+    int ec;
+    int linger = 800;
+    ec = zmq_setsockopt(sock, ZMQ_LINGER, &linger, sizeof(int));
+    NZRET(ec);
+    int ipv6 = 1;
+    ec = zmq_setsockopt(sock, ZMQ_IPV6, &ipv6, sizeof(int));
+    NZRET(ec);
+    // TODO choose max size depending on (expected) channel types.
+    // We can't be sure about the channels that a source is supposed to
+    // contain, so this requires domain knowledge.
+    int64_t max_msg = 1024 * 1024 * 8;
+    ec = zmq_setsockopt(sock, ZMQ_MAXMSGSIZE, &max_msg, sizeof(int64_t));
+    NZRET(ec);
+    return 0;
+}
 
 ERRT set_linger(void *sock, int linger) {
     int ec;

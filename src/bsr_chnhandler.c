@@ -144,6 +144,8 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     g_array_set_clear_func(self->channels, clear_channel_element);
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
+    ec = set_basic_sock_opts(self->sock_inp);
+    NZRET(ec);
     ec = set_rcvhwm(self->sock_inp, RCVHWM);
     NZRET(ec);
     ec = set_rcvbuf(self->sock_inp, RCVBUF);

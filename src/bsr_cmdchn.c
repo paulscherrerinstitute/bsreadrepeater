@@ -147,6 +147,48 @@ ERRT handler_list_init(struct HandlerList *self) {
     return 0;
 }
 
+ERRT handler_list_add(struct HandlerList *self, struct Handler *handler) {
+    // TODO currently we assume that `handler` is on the heap and we assume ownership.
+    self->list = g_list_append(self->list, handler);
+    return 0;
+}
+
+ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler) {
+    cleanup_struct_Handler(handler);
+    self->list = g_list_remove(self->list, handler);
+    // TODO check that HandlerList owns the contained struct Handler.
+    free(handler);
+    return 0;
+}
+
+struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr) {
+    GList *it = self->list;
+    while (it != NULL) {
+        struct Handler *handler = it->data;
+        if (handler->kind == SourceHandler) {
+            if (strncmp(handler->handler.src.addr_inp, addr, ADDR_CAP) == 0) {
+                return &handler->handler.src;
+            };
+        };
+        it = it->next;
+    }
+    return NULL;
+}
+
+struct Handler *handler_list_find_by_input_addr_2(struct HandlerList *self, char const *addr) {
+    GList *it = self->list;
+    while (it != NULL) {
+        struct Handler *handler = it->data;
+        if (handler->kind == SourceHandler) {
+            if (strncmp(handler->handler.src.addr_inp, addr, ADDR_CAP) == 0) {
+                return handler;
+            };
+        };
+        it = it->next;
+    }
+    return NULL;
+}
+
 void cleanup_gstring_ptr(GString **k) {
     if (*k != NULL) {
         g_string_free(*k, TRUE);
