@@ -2,6 +2,8 @@ add_executable(bsrep
 ../include/bsreadrepeater/err.h
 ../include/bsreadrepeater/bsr_str.h
 bsr_str.c
+../include/bsreadrepeater/bsr_stats.h
+bsr_stats.c
 ../include/bsreadrepeater/bsr_startupcmd.h
 bsr_startupcmd.c
 main.c
@@ -24,6 +26,8 @@ bsr_json.cpp
 ./bitshuffle/bitshuffle_core.h
 ../include/bsreadrepeater/bsr_ctx1.h
 bsr_ctx1.c
+../include/bsreadrepeater/bsr_rep.h
+bsr_rep.c
 )
 set_property(TARGET bsrep PROPERTY C_STANDARD 11)
 set_property(TARGET bsrep PROPERTY CXX_STANDARD 20)

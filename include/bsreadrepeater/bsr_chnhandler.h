@@ -1,9 +1,3 @@
-/*
-Project: bsreadrepeater
-License: GNU General Public License v3.0
-Authors: Dominik Werder <dominik.werder@gmail.com>
-*/
-
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_poller.h>
@@ -12,24 +6,6 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <zmq.h>
 
 #define ADDR_CAP 80
-
-struct bsr_statistics {
-    uint64_t received;
-    uint64_t sentok;
-    uint64_t eagain;
-    uint64_t eagain_multipart;
-    uint64_t recv_buf_too_small;
-    uint64_t recv_bytes;
-    uint64_t sent_bytes;
-    struct timespec last_print_ts;
-    float poll_wait_ema;
-    float poll_wait_emv;
-    float process_ema;
-    float process_emv;
-};
-
-int bsr_statistics_init(struct bsr_statistics *self);
-uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self);
 
 struct sockout {
     void *sock;

@@ -1,11 +1,6 @@
-/*
-Project: bsreadrepeater
-License: GNU General Public License v3.0
-Authors: Dominik Werder <dominik.werder@gmail.com>
-*/
-
 #include <bsr_cmdchn.h>
 #include <bsr_json.h>
+#include <bsr_stats.h>
 #include <bsr_str.h>
 #include <err.h>
 #include <errno.h>
@@ -81,16 +76,75 @@ ERRT bsr_cmdchn_socket_reopen(struct bsr_cmdchn *self, struct bsr_poller *poller
     int ec = bsr_cmdchn_socket_reopen_inner(self, poller);
     if (ec != 0) {
         fprintf(stderr, "ERROR can not reopen\n");
-    };
+    }
     return 0;
 }
 
 void cleanup_struct_Handler_ptr(struct Handler **k) {
     if (*k != NULL) {
+        // TODO used from where? replaceable?
         // TODO cleanup the interior as well if needed.
         free(*k);
         *k = NULL;
     }
+}
+
+void cleanup_struct_Handler(struct Handler *self) {
+    int ec;
+    if (self != NULL && self->kind != 0) {
+        switch (self->kind) {
+        case CommandHandler: {
+            cleanup_bsr_cmdchn(&self->handler.cmdh.cmdchn);
+            break;
+        }
+        case SourceHandler: {
+            ec = cleanup_bsr_chnhandler(&self->handler.src);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR cleanup SourceHandler\n");
+            }
+            break;
+        }
+        case StartupHandler: {
+            ec = cleanup_struct_bsr_startupcmd(&self->handler.start);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR cleanup StartupHandler\n");
+            }
+            break;
+        }
+        default: {
+            fprintf(stderr, "cleanup_struct_Handler unknown kind %d\n", self->kind);
+        }
+        }
+        self->kind = 0;
+    } else {
+        fprintf(stderr, "WARN cleanup_struct_Handler nothing to do??\n");
+    }
+}
+
+void cleanup_free_struct_Handler(struct Handler **k) {
+    if (*k != NULL) {
+        free(*k);
+        *k = NULL;
+    }
+}
+
+ERRT cleanup_struct_HandlerList(struct HandlerList *self) {
+    GList *it = self->list;
+    while (it != NULL) {
+        cleanup_struct_Handler(it->data);
+        // TODO this assumes that items in this list are always on the heap.
+        free(it->data);
+        it->data = NULL;
+        it = it->next;
+    }
+    g_list_free(self->list);
+    self->list = NULL;
+    return -1;
+}
+
+ERRT handler_list_init(struct HandlerList *self) {
+    self->list = NULL;
+    return 0;
 }
 
 void cleanup_gstring_ptr(GString **k) {
@@ -119,7 +173,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                 } else {
                     fprintf(stderr, "ERROR command recv %d  %s\n", errno, zmq_strerror(errno));
                     bsr_cmdchn_socket_reopen(self, poller);
-                };
+                }
             } else {
                 buf[n] = 0;
                 fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
@@ -195,9 +249,9 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 snprintf(s, sizeof(s), "    busy mp %" PRIu64 "\n", so->eagain_multipart);
                                 str = g_string_append(str, s);
                                 it2 = it2->next;
-                            };
-                        };
-                    };
+                            }
+                        }
+                    }
                     zmq_send(self->socket, str->str, str->len, 0);
                     g_string_free(str, TRUE);
                 } else if (n >= 12 && memcmp("list-sources", buf, 12) == 0) {
@@ -216,10 +270,10 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 str = g_string_append(str, so->addr);
                                 str = g_string_append(str, "\n");
                                 it2 = it2->next;
-                            };
-                        };
+                            }
+                        }
                         it = it->next;
-                    };
+                    }
                     zmq_send(self->socket, str->str, str->len, 0);
                     g_string_free(str, TRUE);
                 } else if (n >= 11 && memcmp("add-source,", buf, 11) == 0) {
@@ -245,8 +299,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             ec = handler_list_add(self->handler_list, handler);
                             NZRET(ec);
                             handler = NULL;
-                        };
-                    };
+                        }
+                    }
                     char *rep = "add-source: done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n > 11 && memcmp("add-output,", buf, 11) == 0) {
@@ -267,9 +321,9 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             ec = bsr_chnhandler_add_out(h, sm.beg[2]);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not add output\n");
-                            };
-                        };
-                    };
+                            }
+                        }
+                    }
                     char *rep = "add-output: done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-source", buf, 13) == 0) {
@@ -290,9 +344,9 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not remove handler from handler-list\n");
                             } else {
-                            };
-                        };
-                    };
+                            }
+                        }
+                    }
                     char *rep = "remove-source: done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-output", buf, 13) == 0) {
@@ -313,15 +367,15 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             ec = bsr_chnhandler_remove_out(h, sm.beg[2]);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not remove output\n");
-                            };
-                        };
-                    };
+                            }
+                        }
+                    }
                     char *rep = "remove-output: done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else {
                     char *rep = "Unknown command";
                     zmq_send(self->socket, rep, strlen(rep), 0);
-                };
+                }
                 // TODO only try more if multipart. REQ must be matched by
                 // REP.
                 // do_recv = 0;
@@ -333,15 +387,15 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                 // zmq-specific error-code.
                 // if (ec == -1) {
                 //    fprintf(stderr, "error: %d  %s\n", errno, zmq_strerror(errno));
-                //};
+                //}
                 // NZRET(ec);
-            };
-        };
+            }
+        }
     } else if (self->state == SEND) {
         int n = snprintf((char *)buf, N, "reply");
         if (n <= 0) {
             return -1;
-        };
+        }
         n = zmq_send(self->socket, buf, n, ZMQ_DONTWAIT);
         if (n == -1) {
             if (errno == EAGAIN) {
@@ -357,13 +411,43 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                 fprintf(stderr, "ERROR on send %d\n", errno);
                 bsr_cmdchn_socket_reopen(self, poller);
                 return -1;
-            };
+            }
         } else {
             // All good.
             self->state = RECV;
             ec = zmq_poller_modify(poller->poller, self->socket, ZMQ_POLLIN);
             NZRET(ec);
-        };
-    };
+        }
+    }
+    return 0;
+}
+
+ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd,
+                         struct timespec tspoll) {
+    int ec;
+    if (0) {
+        fprintf(stderr, "handlers_handle_msg  kind %d  self %p\n", self->kind, (void *)self);
+    }
+    switch (self->kind) {
+    case CommandHandler: {
+        struct CommandHandler *h = &self->handler.cmdh;
+        ec = bsr_cmdchn_handle_event(&h->cmdchn, poller, cmd);
+        NZRET(ec);
+        break;
+    }
+    case SourceHandler: {
+        ec = bsr_chnhandler_handle_event(&self->handler.src, poller, tspoll);
+        NZRET(ec);
+        break;
+    }
+    case StartupHandler: {
+        ec = bsr_startupcmd_handle_event(&self->handler.start);
+        NZRET(ec);
+        break;
+    }
+    default: {
+        fprintf(stderr, "ERROR handlers_handle_msg unhandled kind %d\n", self->kind);
+    }
+    }
     return 0;
 }

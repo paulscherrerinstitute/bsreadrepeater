@@ -1,0 +1,23 @@
+#pragma once
+#include <err.h>
+#include <stdint.h>
+#include <time.h>
+
+struct bsr_statistics {
+    uint64_t received;
+    uint64_t sentok;
+    uint64_t eagain;
+    uint64_t eagain_multipart;
+    uint64_t recv_buf_too_small;
+    uint64_t recv_bytes;
+    uint64_t sent_bytes;
+    struct timespec last_print_ts;
+    float poll_wait_ema;
+    float poll_wait_emv;
+    float process_ema;
+    float process_emv;
+};
+
+ERRT bsr_statistics_init(struct bsr_statistics *self);
+uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self);
+ERRT bsr_statistics_print_now(struct bsr_statistics *self);

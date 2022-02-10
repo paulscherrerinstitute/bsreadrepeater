@@ -86,7 +86,6 @@ ERRT ctx1_run(struct ctx1 *ctx1, struct ctx1_args *args) {
 ERRT cleanup_ctx1(struct ctx1 *self) {
     int ec;
     if (self != NULL) {
-        // TODO use atomic:
         self->stop = 1;
         void *retval;
         ec = pthread_join(self->thr1, &retval);

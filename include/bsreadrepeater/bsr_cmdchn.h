@@ -17,6 +17,9 @@ struct HandlerList {
     GList *list;
 };
 
+ERRT cleanup_struct_HandlerList(struct HandlerList *self);
+ERRT handler_list_init(struct HandlerList *self);
+
 struct bsr_cmdchn {
     void *socket;
     char addr[ADDR_CAP];
@@ -50,6 +53,7 @@ struct Handler {
 };
 
 void cleanup_struct_Handler(struct Handler *self);
+void cleanup_free_struct_Handler(struct Handler **k);
 
 enum CommandType {
     CmdNone = 0,
@@ -80,3 +84,6 @@ void cleanup_bsr_cmdchn(struct bsr_cmdchn *self);
 int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *user_data, char *addr,
                     struct HandlerList *handler_list, struct bsr_statistics *stats);
 int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd);
+
+ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd,
+                         struct timespec tspoll);
