@@ -52,6 +52,29 @@ int main_inner(int const argc, char const *const *argv) {
     NZRET(ec);
     ec = bsrep_start(&rep);
     NZRET(ec);
+    ec = bsrep_wait_for_done(&rep);
+    NZRET(ec);
+    return 0;
+}
+
+ERRT test_simple_start_and_shutdown() {
+    int ec;
+    int const cmd_addr_max = 64;
+    char cmd_addr[cmd_addr_max];
+    strncpy(cmd_addr, "tcp://127.0.0.1:4242", cmd_addr_max);
+    char *startup_file = NULL;
+    struct bsrep __attribute__((cleanup(cleanup_bsrep))) rep = {0};
+    ec = bsrep_init(&rep, cmd_addr, startup_file);
+    NZRET(ec);
+    rep.do_polls_max = 2;
+    ec = bsrep_start(&rep);
+    NZRET(ec);
+    ec = bsrep_wait_for_done(&rep);
+    NZRET(ec);
+    if (rep.polls_count != 2) {
+        fprintf(stderr, "polls done: %lu\n", rep.polls_count);
+        return 1;
+    }
     return 0;
 }
 
@@ -97,9 +120,14 @@ int main(int const argc, char const *const *argv) {
         }
     }
     if (do_test) {
+        ec = test_simple_start_and_shutdown();
+        if (ec != 0) {
+            fprintf(stderr, "ERROR test_simple_start_and_shutdown\n");
+            return 1;
+        }
         ec = test_receive();
         if (ec != 0) {
-            fprintf(stderr, "ERROR test_receive failed\n");
+            fprintf(stderr, "ERROR test_receive\n");
             return 1;
         }
         return 0;

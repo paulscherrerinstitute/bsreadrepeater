@@ -11,6 +11,7 @@ struct bsrep {
     _Atomic int stop;
     int thrret;
     uint64_t do_polls_min;
+    uint64_t do_polls_max;
     uint64_t polls_count;
     struct bsr_statistics stats;
 };
@@ -18,3 +19,4 @@ struct bsrep {
 ERRT cleanup_bsrep(struct bsrep *self);
 ERRT bsrep_init(struct bsrep *self, char const *cmd_addr, char *startup_file);
 ERRT bsrep_start(struct bsrep *self);
+ERRT bsrep_wait_for_done(struct bsrep *self);

@@ -104,6 +104,9 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
     int const evsmax = 64;
     zmq_poller_event_t evs[evsmax];
     for (uint64_t i4 = 0;; i4 += 1) {
+        if (self->do_polls_max > 0 && self->polls_count >= self->do_polls_max) {
+            break;
+        }
         if (self->stop == 1) {
             if (self->polls_count >= self->do_polls_min) {
                 break;
@@ -190,4 +193,16 @@ ERRT bsrep_start(struct bsrep *self) {
     ec = pthread_setname_np(self->thr1, "bsrep");
     NZRET(ec);
     return 0;
+}
+
+ERRT bsrep_wait_for_done(struct bsrep *self) {
+    int ec;
+    if (self->thread_created == 1) {
+        ec = pthread_join(self->thr1, NULL);
+        self->thread_created = 0;
+        NZRET(ec);
+        return 0;
+    } else {
+        return 1;
+    }
 }
