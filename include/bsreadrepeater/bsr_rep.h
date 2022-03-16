@@ -14,6 +14,8 @@ struct bsrep {
     uint64_t do_polls_max;
     uint64_t polls_count;
     struct bsr_statistics stats;
+    struct timespec ts_inactive_check_last;
+    uint64_t inactive_check_next_ix;
 };
 
 ERRT cleanup_bsrep(struct bsrep *self);

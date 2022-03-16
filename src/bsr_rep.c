@@ -7,6 +7,7 @@
 #include <bsr_stats.h>
 #include <bsr_str.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -17,6 +18,8 @@
 #include <time.h>
 #include <zmq.h>
 
+int64_t const IDLE_CHECK_DT_MS = 30000;
+int64_t const MAX_IDLE_MS = 120000;
 size_t const MAXSTR = 128;
 
 ERRT cleanup_bsrep(struct bsrep *self) {
@@ -46,6 +49,8 @@ ERRT cleanup_bsrep(struct bsrep *self) {
 }
 
 ERRT bsrep_init(struct bsrep *self, char const *cmd_addr, char *startup_file) {
+    self->inactive_check_next_ix = 0;
+    clock_gettime(CLOCK_MONOTONIC, &self->ts_inactive_check_last);
     if (strnlen(cmd_addr, MAXSTR) >= MAXSTR) {
         return 1;
     }
@@ -57,6 +62,36 @@ ERRT bsrep_init(struct bsrep *self, char const *cmd_addr, char *startup_file) {
         }
         self->startup_file = malloc(MAXSTR);
         strncpy(self->startup_file, startup_file, MAXSTR);
+    }
+    return 0;
+}
+
+static ERRT remove_and_add_source(struct bsr_memreq *memreq, struct bsr_chnhandler *h2) {
+    int ec;
+    int outputs_count = bsr_chnhandler_outputs_count(h2);
+    fprintf(stderr, "outputs_count %d\n", outputs_count);
+    // TODO is there enough space in memreq buffer for all commands?
+    int nfree = bsr_memreq_free_len(memreq);
+    if (nfree < 2 + outputs_count) {
+        // Memory buffer does not have enough space for the required commands.
+        // Have to try again later.
+        fprintf(stderr, "not enough space in memreq for idle commands\n");
+    } else {
+        char *dst = NULL;
+        ec = bsr_memreq_next_cmd_buf(memreq, &dst);
+        NZRET(ec);
+        snprintf(dst, OUTQ_ITEM_LEN, "remove-source,%s", h2->addr_inp);
+        ec = bsr_memreq_next_cmd_buf(memreq, &dst);
+        NZRET(ec);
+        snprintf(dst, OUTQ_ITEM_LEN, "add-source,%s", h2->addr_inp);
+        GList *sol = h2->socks_out;
+        while (sol != NULL) {
+            struct sockout *so = (struct sockout *)sol->data;
+            ec = bsr_memreq_next_cmd_buf(memreq, &dst);
+            NZRET(ec);
+            snprintf(dst, OUTQ_ITEM_LEN, "add-output,%s,%s", h2->addr_inp, so->addr);
+            sol = sol->next;
+        }
     }
     return 0;
 }
@@ -97,7 +132,23 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         hh->kind = StartupHandler;
         ec = bsr_startupcmd_init(&hh->handler.start, &poller, hh, stf, self->cmd_addr);
         NZRET(ec);
-        handler_list_add(&handler_list, hh);
+        ec = handler_list_add(&handler_list, hh);
+        NZRET(ec);
+        hh = NULL;
+    }
+
+    // Shared ref:
+    struct bsr_memreq *g_memreq = NULL;
+    {
+        struct Handler *hh __attribute__((cleanup(cleanup_free_struct_Handler))) = NULL;
+        hh = malloc(sizeof(struct Handler));
+        NULLRET(hh);
+        hh->kind = MemReqHandler;
+        ec = bsr_memreq_init(&hh->handler.memreq, &poller, hh, self->cmd_addr);
+        NZRET(ec);
+        ec = handler_list_add(&handler_list, hh);
+        NZRET(ec);
+        g_memreq = &hh->handler.memreq;
         hh = NULL;
     }
 
@@ -110,6 +161,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         if (self->stop == 1) {
             if (self->polls_count >= self->do_polls_min) {
                 break;
+            } else {
             }
         }
         struct timespec ts1;
@@ -144,7 +196,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             zmq_poller_event_t *ev = evs + i;
             if (ev->user_data != NULL) {
                 struct ReceivedCommand cmd = {0};
-                ec = handlers_handle_msg(ev->user_data, &poller, &cmd, ts2);
+                ec = handlers_handle_msg(ev->user_data, ev->events, &poller, &cmd, ts2);
                 if (ec != 0) {
                     fprintf(stderr, "handle via user-data GOT %d\n", ec);
                 }
@@ -172,6 +224,62 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             if (FALSE) {
                 fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats->process_ema,
                         sqrtf(stats->process_emv));
+            }
+            if (time_delta_mu(self->ts_inactive_check_last, ts3) > IDLE_CHECK_DT_MS * 1000) {
+                clock_gettime(CLOCK_REALTIME, &self->stats.datetime_idle_check_last);
+                uint64_t checked_idle = 0;
+                uint64_t found_idle = 0;
+                uint64_t ix = 0;
+                GList *p1 = handler_list.list;
+                while (p1 != NULL && ix < self->inactive_check_next_ix) {
+                    if (p1->next == NULL) {
+                        self->inactive_check_next_ix = 0;
+                        p1 = handler_list.list;
+                        break;
+                    } else {
+                        ix += 1;
+                        p1 = p1->next;
+                    }
+                }
+                while (p1 != NULL) {
+                    struct Handler *h = handler_list_get_data(p1);
+                    if (h->kind == SourceHandler) {
+                        struct bsr_chnhandler *h2 = &h->handler.src;
+                        int64_t dt = time_delta_mu(h2->ts_recv_last, ts3);
+                        if (dt > MAX_IDLE_MS * 1000) {
+                            h2->ts_recv_last = ts3;
+                            if (FALSE) {
+                                ec = remove_and_add_source(g_memreq, h2);
+                                NZRET(ec);
+                            }
+                            if (TRUE) {
+                                ec = bsr_chnhandler_reopen_input(h2);
+                                NZRET(ec);
+                            }
+                            found_idle += 1;
+                        }
+                        checked_idle += 1;
+                    }
+                    if (p1->next == NULL) {
+                        self->inactive_check_next_ix = 0;
+                        p1 = handler_list.list;
+                        break;
+                    } else {
+                        self->inactive_check_next_ix += 1;
+                        p1 = p1->next;
+                    }
+                    if (found_idle >= 1) {
+                        break;
+                    }
+                }
+                if (found_idle != 0) {
+                    fprintf(stderr, "idle checked  checked_idle %" PRIu64 "  found_idle %" PRIu64 "\n", checked_idle,
+                            found_idle);
+                }
+                if (found_idle != 0) {
+                } else {
+                    self->ts_inactive_check_last = ts3;
+                }
             }
         }
     }

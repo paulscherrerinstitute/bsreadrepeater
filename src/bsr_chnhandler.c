@@ -19,10 +19,6 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <time.h>
 
 #define PRINT_RECEIVED 0
-#define RCVHWM 128
-#define RCVBUF (1024 * 128)
-#define SNDHWM 128
-#define SNDBUF (1024 * 128)
 
 static int const NBUF = 1024 * 128;
 static int const DECOMP_BUF_MAX = 1024 * 128;
@@ -120,11 +116,13 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->dhparsed = 0;
     self->dhdecompr = 0;
     self->json_parse_errors = 0;
+    self->input_reopened = 0;
     self->stats = stats;
     self->socks_out = NULL;
     self->buf = malloc(DECOMP_BUF_MAX);
     NULLRET(self->buf);
     clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);
+    clock_gettime(CLOCK_MONOTONIC, &self->ts_recv_last);
     self->channels = g_array_new(FALSE, FALSE, sizeof(void *));
     NULLRET(self->channels);
     self->chnmap = channel_map_new();
@@ -137,16 +135,38 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     g_array_set_clear_func(self->channels, clear_channel_element);
     self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
-    ec = set_basic_sock_opts(self->sock_inp);
-    NZRET(ec);
-    ec = set_rcvhwm(self->sock_inp, RCVHWM);
-    NZRET(ec);
-    ec = set_rcvbuf(self->sock_inp, RCVBUF);
+    ec = set_pull_sock_opts(self->sock_inp);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
     ZMQ_NEGONERET(ec);
     ec = zmq_poller_add(poller->poller, self->sock_inp, user_data, ZMQ_POLLIN);
     ZMQ_NEGONERET(ec);
+    return 0;
+}
+
+ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
+    int ec;
+    ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
+    if (ec == -1) {
+        fprintf(stderr, "ERROR bsr_chnhandler_reopen_input zmq_poller_remove inp %d\n", ec);
+        return -1;
+    }
+    ec = zmq_close(self->sock_inp);
+    if (ec == -1) {
+        fprintf(stderr, "ERROR bsr_chnhandler_reopen_input zmq_close inp %d\n", ec);
+        return -1;
+    }
+    self->sock_inp = NULL;
+    self->sock_inp = zmq_socket(self->poller->ctx, ZMQ_PULL);
+    ZMQ_NULLRET(self->sock_inp);
+    ec = set_pull_sock_opts(self->sock_inp);
+    NZRET(ec);
+    ec = zmq_connect(self->sock_inp, self->addr_inp);
+    ZMQ_NEGONERET(ec);
+    ec = zmq_poller_add(self->poller->poller, self->sock_inp, self->user_data, ZMQ_POLLIN);
+    ZMQ_NEGONERET(ec);
+    self->more_last = 0;
+    self->input_reopened += 1;
     return 0;
 }
 
@@ -163,9 +183,7 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
     data->eagain_multipart = 0;
     void *sock __attribute__((cleanup(cleanup_zmq_socket))) = zmq_socket(self->poller->ctx, ZMQ_PUSH);
     ZMQ_NULLRET(sock);
-    ec = set_sndhwm(sock, SNDHWM);
-    NZRET(ec);
-    ec = set_sndbuf(sock, SNDBUF);
+    ec = set_push_sock_opts(sock);
     NZRET(ec);
     ec = zmq_bind(sock, data->addr);
     if (ec == -1) {
@@ -261,6 +279,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     return -1;
                 }
             } else {
+                self->ts_recv_last = tspoll;
                 self->recv_bytes += n;
                 self->stats->recv_bytes += n;
                 char *buf = zmq_msg_data(&msgin);
@@ -302,15 +321,15 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
+                            fprintf(stderr, "can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n", self->addr_inp,
                                     self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
                         }
                     } else {
                         self->mhparsed += 1;
                         self->dh_compr = header->compr;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\ncompr: %d\n%s\n-----\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, header->compr, log->str);
+                            fprintf(stderr, "GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
+                                    self->addr_inp, self->mpmsgc, self->mpc, header->compr, log->str);
                         }
                     }
                 }
@@ -355,14 +374,14 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "can not parse  %s  (%d, %d)  %d  %.*s  [%s]\n", self->addr_inp,
+                            fprintf(stderr, "can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n", self->addr_inp,
                                     self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
                         }
                     } else {
                         self->dhparsed += 1;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "GOOD PARSE     %s  (%d, %d)\n%s\n-----\n", self->addr_inp, self->mpmsgc,
-                                    self->mpc, log->str);
+                            fprintf(stderr, "GOOD PARSE     %s  (%" PRIu64 ", %d)\n%s\n-----\n", self->addr_inp,
+                                    self->mpmsgc, self->mpc, log->str);
                         }
                     }
                 }
@@ -426,4 +445,14 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
         bsr_statistics_print_now(self->stats);
     }
     return 0;
+}
+
+int bsr_chnhandler_outputs_count(struct bsr_chnhandler *self) {
+    int c = 0;
+    GList *p1 = self->socks_out;
+    while (p1 != NULL) {
+        c += 1;
+        p1 = p1->next;
+    }
+    return c;
 }

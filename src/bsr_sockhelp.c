@@ -2,6 +2,12 @@
 #include <err.h>
 #include <zmq.h>
 
+#define MAX_MSG_SIZE 1024 * 1024 * 8
+#define RCVHWM 128
+#define RCVBUF (1024 * 128)
+#define SNDHWM 128
+#define SNDBUF (1024 * 128)
+
 ERRT cleanup_zmq_ctx(void **self) {
     int ec;
     if (self != NULL) {
@@ -41,7 +47,7 @@ ERRT set_basic_sock_opts(void *sock) {
     // TODO choose max size depending on (expected) channel types.
     // We can't be sure about the channels that a source is supposed to
     // contain, so this requires domain knowledge.
-    int64_t max_msg = 1024 * 1024 * 8;
+    int64_t max_msg = MAX_MSG_SIZE;
     ec = zmq_setsockopt(sock, ZMQ_MAXMSGSIZE, &max_msg, sizeof(int64_t));
     NZRET(ec);
     return 0;
@@ -95,6 +101,60 @@ ERRT set_sndbuf(void *sock, int sndbuf) {
     if (ec == -1) {
         return -1;
     }
+    return 0;
+}
+
+static ERRT set_keepalive(void *sock) {
+    int ec;
+    int val;
+    int len = sizeof(val);
+    val = 1;
+    ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 120;
+    ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_IDLE, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 30;
+    ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_INTVL, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 4;
+    ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_CNT, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 10000;
+    ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_IVL, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 60000;
+    ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_TIMEOUT, &val, len);
+    ZMQ_NEGONERET(ec);
+    val = 60000;
+    ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_TTL, &val, len);
+    ZMQ_NEGONERET(ec);
+    return 0;
+}
+
+ERRT set_pull_sock_opts(void *sock) {
+    int ec;
+    ec = set_basic_sock_opts(sock);
+    NZRET(ec);
+    ec = set_keepalive(sock);
+    NZRET(ec);
+    ec = set_rcvhwm(sock, RCVHWM);
+    NZRET(ec);
+    ec = set_rcvbuf(sock, RCVBUF);
+    NZRET(ec);
+    return 0;
+}
+
+ERRT set_push_sock_opts(void *sock) {
+    int ec;
+    ec = set_basic_sock_opts(sock);
+    NZRET(ec);
+    ec = set_keepalive(sock);
+    NZRET(ec);
+    ec = set_sndhwm(sock, SNDHWM);
+    NZRET(ec);
+    ec = set_sndbuf(sock, SNDBUF);
+    NZRET(ec);
     return 0;
 }
 

@@ -8,12 +8,27 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <unistd.h>
 
 ERRT cleanup_struct_bsr_startupcmd(struct bsr_startupcmd *self) {
+    int ec;
     if (self != NULL) {
-        self->poller = NULL;
         if (self->sock_out != NULL) {
-            zmq_close(self->sock_out);
-        };
-    };
+            if (self->poller != NULL) {
+                ec = zmq_poller_remove_fd(self->poller->poller, self->fd);
+                if (ec == -1) {
+                    fprintf(stderr, "ERROR  cleanup_struct_bsr_startupcmd  zmq_poller_remove_fd\n");
+                }
+                self->fd = 0;
+                ec = zmq_poller_remove(self->poller->poller, self->sock_out);
+                if (ec == -1) {
+                    fprintf(stderr, "ERROR  cleanup_struct_bsr_startupcmd  zmq_poller_remove\n");
+                }
+            }
+            ec = zmq_close(self->sock_out);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR  cleanup_struct_bsr_startupcmd  zmq_close\n");
+            }
+            self->sock_out = NULL;
+        }
+    }
     return 0;
 }
 
@@ -59,7 +74,7 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
             ZMQ_NEGONERET(ec);
             ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLOUT);
             ZMQ_NEGONERET(ec);
-        };
+        }
     } else if (self->state == 1) {
         int evs = 0;
         size_t evsl = sizeof(int);
@@ -87,7 +102,7 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
                 };
             } else {
                 // Nothing else to do here.
-            };
+            }
             if (nfound == 0) {
                 if (self->fd == -1) {
                     // if nothing parsed and file closed, remove from poller and close.
@@ -106,15 +121,15 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
                         ZMQ_NEGONERET(ec);
                         ec = zmq_poller_remove_fd(self->poller->poller, self->fd);
                         ZMQ_NEGONERET(ec);
-                    };
-                };
+                    }
+                }
             } else {
                 // Need to receive reply first.
                 self->state = 2;
                 ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLIN);
                 ZMQ_NEGONERET(ec);
-            };
-        };
+            }
+        }
     } else if (self->state == 2) {
         char gg[64];
         int n = zmq_recv(self->sock_out, gg, 64, ZMQ_DONTWAIT);
@@ -124,7 +139,7 @@ ERRT bsr_startupcmd_handle_event(struct bsr_startupcmd *self) {
             ec = zmq_poller_modify(self->poller->poller, self->sock_out, ZMQ_POLLOUT);
             ZMQ_NEGONERET(ec);
             self->state = 1;
-        };
-    };
+        }
+    }
     return 0;
 }

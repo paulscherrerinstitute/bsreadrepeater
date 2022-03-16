@@ -82,9 +82,10 @@ ERRT test_receive() {
     int ec;
     fprintf(stderr, "test_receive\n");
     struct ctx1 __attribute__((cleanup(cleanup_ctx1))) ctx1 = {0};
-    struct ctx1_args args = {0};
-    args.ty = 1;
-    ctx1_start(&ctx1, &args);
+    ec = ctx1_init(&ctx1);
+    NZRET(ec);
+    ec = ctx1_start(&ctx1);
+    NZRET(ec);
     struct bsrep __attribute__((cleanup(cleanup_bsrep))) rep = {0};
     rep.do_polls_min = 20;
     char const *cmd_addr = "tcp://127.0.0.1:4242";
@@ -99,7 +100,7 @@ ERRT test_receive() {
 
 int main(int const argc, char const *const *argv) {
     int ec;
-    fprintf(stderr, "bsrep 0.2.0\n");
+    fprintf(stderr, "bsrep 0.3.0\n");
     {
         // For shared libs, make sure that we got dynamically linked against a compatible version.
         int maj, min, pat;

@@ -15,6 +15,8 @@ bsr_sockhelp.c
 bsr_cmdchn.c
 ../include/bsreadrepeater/bsr_chnhandler.h
 bsr_chnhandler.c
+../include/bsreadrepeater/bsr_memreq.h
+bsr_memreq.c
 ../include/bsreadrepeater/hex.h
 hex.c
 bsr_json.cpp

@@ -12,6 +12,7 @@ struct bsr_statistics {
     uint64_t recv_bytes;
     uint64_t sent_bytes;
     struct timespec last_print_ts;
+    struct timespec datetime_idle_check_last;
     float poll_wait_ema;
     float poll_wait_emv;
     float process_ema;

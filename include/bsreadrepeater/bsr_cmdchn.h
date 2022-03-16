@@ -7,6 +7,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
+#include <bsr_memreq.h>
 #include <bsr_poller.h>
 #include <bsr_startupcmd.h>
 #include <err.h>
@@ -39,12 +40,14 @@ enum HandlerKind {
     CommandHandler = 1,
     SourceHandler = 2,
     StartupHandler = 3,
+    MemReqHandler = 4,
 };
 
 union HandlerUnion {
     struct CommandHandler cmdh;
     struct bsr_chnhandler src;
     struct bsr_startupcmd start;
+    struct bsr_memreq memreq;
 };
 
 struct Handler {
@@ -77,6 +80,7 @@ struct ReceivedCommand {
 
 ERRT handler_list_add(struct HandlerList *self, struct Handler *handler);
 ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler);
+struct Handler *handler_list_get_data(GList *p);
 struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr);
 struct Handler *handler_list_find_by_input_addr_2(struct HandlerList *self, char const *addr);
 
@@ -85,5 +89,5 @@ int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *us
                     struct HandlerList *handler_list, struct bsr_statistics *stats);
 int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd);
 
-ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd,
+ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *poller, struct ReceivedCommand *cmd,
                          struct timespec tspoll);

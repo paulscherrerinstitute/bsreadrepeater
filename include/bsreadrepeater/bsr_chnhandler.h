@@ -26,8 +26,9 @@ struct bsr_chnhandler {
     int state;
     int more_last;
     int mpc;
-    uint32_t mpmsgc;
+    uint64_t mpmsgc;
     void *sock_inp;
+    // TODO better use a typed container:
     GList *socks_out;
     char *buf;
     int dh_compr;
@@ -36,6 +37,7 @@ struct bsr_chnhandler {
     GArray *channels;
     struct channel_map *chnmap;
     struct bsread_main_header *bsread_main_header;
+    struct timespec ts_recv_last;
     uint64_t received;
     uint64_t mhparsed;
     uint64_t dhparsed;
@@ -47,6 +49,7 @@ struct bsr_chnhandler {
     uint64_t sent_bytes;
     uint64_t bsread_errors;
     uint64_t json_parse_errors;
+    uint64_t input_reopened;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
 };
@@ -54,6 +57,8 @@ struct bsr_chnhandler {
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats);
+ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
+int bsr_chnhandler_outputs_count(struct bsr_chnhandler *self);

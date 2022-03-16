@@ -111,8 +111,15 @@ void cleanup_struct_Handler(struct Handler *self) {
             }
             break;
         }
+        case MemReqHandler: {
+            ec = cleanup_struct_bsr_memreq(&self->handler.memreq);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR cleanup MemReqHandler\n");
+            }
+            break;
+        }
         default: {
-            fprintf(stderr, "cleanup_struct_Handler unknown kind %d\n", self->kind);
+            fprintf(stderr, "ERROR cleanup_struct_Handler unknown kind %d\n", self->kind);
         }
         }
         self->kind = 0;
@@ -159,6 +166,10 @@ ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler) {
     // TODO check that HandlerList owns the contained struct Handler.
     free(handler);
     return 0;
+}
+
+struct Handler *handler_list_get_data(GList *p) {
+    return (struct Handler *)p->data;
 }
 
 struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr) {
@@ -245,6 +256,12 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     snprintf(s, sizeof(s), "process avg %7.0f var %7.0f\n", self->stats->process_ema,
                              sqrtf(self->stats->process_emv));
                     str = g_string_append(str, s);
+                    str = g_string_append(str, "idle check last ");
+                    struct tm tms;
+                    gmtime_r(&self->stats->datetime_idle_check_last.tv_sec, &tms);
+                    strftime(s, sizeof(s), "%Y-%m-%dT%H:%M:%SZ", &tms);
+                    str = g_string_append(str, s);
+                    str = g_string_append(str, "\n");
                     zmq_send(self->socket, str->str, str->len, 0);
                     g_string_free(str, TRUE);
                 } else if (n > 12 && memcmp("stats-source", buf, 12) == 0) {
@@ -273,6 +290,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             snprintf(s, sizeof(s), "bsread errors %" PRIu64 "\n", h->bsread_errors);
                             str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "json parse errors %" PRIu64 "\n", h->json_parse_errors);
+                            str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "input reopened %" PRIu64 "\n", h->input_reopened);
                             str = g_string_append(str, s);
                             str = g_string_append(str, "+++   ++++\n");
                             channel_map_str(h->chnmap, &str);
@@ -464,7 +483,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
     return 0;
 }
 
-ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct ReceivedCommand *cmd,
+ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *poller, struct ReceivedCommand *cmd,
                          struct timespec tspoll) {
     int ec;
     if (0) {
@@ -484,6 +503,11 @@ ERRT handlers_handle_msg(struct Handler *self, struct bsr_poller *poller, struct
     }
     case StartupHandler: {
         ec = bsr_startupcmd_handle_event(&self->handler.start);
+        NZRET(ec);
+        break;
+    }
+    case MemReqHandler: {
+        ec = bsr_memreq_handle_event(&self->handler.memreq, events);
         NZRET(ec);
         break;
     }
