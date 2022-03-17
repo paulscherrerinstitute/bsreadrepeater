@@ -17,6 +17,7 @@ struct bsr_statistics {
     float poll_wait_emv;
     float process_ema;
     float process_emv;
+    uint64_t input_reopened;
 };
 
 ERRT bsr_statistics_init(struct bsr_statistics *self);

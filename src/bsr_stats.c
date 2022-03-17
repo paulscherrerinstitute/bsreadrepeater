@@ -11,6 +11,7 @@ int bsr_statistics_init(struct bsr_statistics *self) {
     self->recv_buf_too_small = 0;
     self->poll_wait_ema = 0.0;
     self->poll_wait_emv = 0.0;
+    self->input_reopened = 0;
     return 0;
 }
 

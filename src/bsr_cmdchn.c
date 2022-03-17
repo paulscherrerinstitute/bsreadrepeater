@@ -262,6 +262,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     strftime(s, sizeof(s), "%Y-%m-%dT%H:%M:%SZ", &tms);
                     str = g_string_append(str, s);
                     str = g_string_append(str, "\n");
+                    snprintf(s, sizeof(s), "input reopened %" PRIu64 "\n", self->stats->input_reopened);
+                    str = g_string_append(str, s);
                     zmq_send(self->socket, str->str, str->len, 0);
                     g_string_free(str, TRUE);
                 } else if (n > 12 && memcmp("stats-source", buf, 12) == 0) {

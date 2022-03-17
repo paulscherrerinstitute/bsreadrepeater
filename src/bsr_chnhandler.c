@@ -167,6 +167,7 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     ZMQ_NEGONERET(ec);
     self->more_last = 0;
     self->input_reopened += 1;
+    self->stats->input_reopened += 1;
     return 0;
 }
 
