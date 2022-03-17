@@ -1,9 +1,3 @@
-/*
-Project: bsreadrepeater
-License: GNU General Public License v3.0
-Authors: Dominik Werder <dominik.werder@gmail.com>
-*/
-
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
 #include <bsr_cmdchn.h>
@@ -24,6 +18,8 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <time.h>
 #include <unistd.h>
 #include <zmq.h>
+
+char const *const BSREP_VERSION = "0.3.2";
 
 int main_inner(int const argc, char const *const *argv) {
     int ec;
@@ -100,7 +96,7 @@ ERRT test_receive() {
 
 int main(int const argc, char const *const *argv) {
     int ec;
-    fprintf(stderr, "bsrep 0.3.0\n");
+    fprintf(stderr, "bsrep %s\n", BSREP_VERSION);
     {
         // For shared libs, make sure that we got dynamically linked against a compatible version.
         int maj, min, pat;
