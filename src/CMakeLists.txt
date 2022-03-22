@@ -1,12 +1,15 @@
 add_executable(bsrep
 ../include/bsreadrepeater/err.h
+../include/bsreadrepeater/hex.h
+hex.c
+../include/bsreadrepeater/bsr_ema.h
+bsr_ema.c
 ../include/bsreadrepeater/bsr_str.h
 bsr_str.c
 ../include/bsreadrepeater/bsr_stats.h
 bsr_stats.c
 ../include/bsreadrepeater/bsr_startupcmd.h
 bsr_startupcmd.c
-main.c
 ../include/bsreadrepeater/bsr_poller.h
 bsr_poller.c
 ../include/bsreadrepeater/bsr_sockhelp.h
@@ -17,8 +20,10 @@ bsr_cmdchn.c
 bsr_chnhandler.c
 ../include/bsreadrepeater/bsr_memreq.h
 bsr_memreq.c
-../include/bsreadrepeater/hex.h
-hex.c
+../include/bsreadrepeater/bsr_ctx1.h
+bsr_ctx1.c
+../include/bsreadrepeater/bsr_rep.h
+bsr_rep.c
 bsr_json.cpp
 ./bitshuffle/lz4.c
 ./bitshuffle/lz4.h
@@ -26,10 +31,9 @@ bsr_json.cpp
 ./bitshuffle/iochain.h
 ./bitshuffle/bitshuffle_core.c
 ./bitshuffle/bitshuffle_core.h
-../include/bsreadrepeater/bsr_ctx1.h
-bsr_ctx1.c
-../include/bsreadrepeater/bsr_rep.h
-bsr_rep.c
+./bitshuffle/bitshuffle.c
+./bitshuffle/bitshuffle.h
+main.c
 )
 set_property(TARGET bsrep PROPERTY C_STANDARD 11)
 set_property(TARGET bsrep PROPERTY CXX_STANDARD 20)

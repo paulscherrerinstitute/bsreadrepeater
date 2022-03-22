@@ -13,7 +13,8 @@ def cmd(ctx, s):
     sock.connect(cmd_addr)
     sock.send(s.encode())
     b = sock.recv()
-    print("Response: %s", b.decode())
+    print("Response:", b.decode())
 
+cmd(ctx, "stats")
 cmd(ctx, "add-source,tcp://127.0.0.1:50000")
 cmd(ctx, "add-output,tcp://127.0.0.1:50000,tcp://127.0.0.1:50001")

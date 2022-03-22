@@ -2,11 +2,12 @@
 #include <err.h>
 #include <zmq.h>
 
-#define MAX_MSG_SIZE 1024 * 1024 * 8
 #define RCVHWM 128
 #define RCVBUF (1024 * 128)
 #define SNDHWM 128
 #define SNDBUF (1024 * 128)
+
+static size_t MAX_MSG_SIZE = 1024 * 1024 * 20;
 
 ERRT cleanup_zmq_ctx(void **self) {
     int ec;

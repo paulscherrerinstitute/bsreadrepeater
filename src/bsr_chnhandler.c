@@ -1,9 +1,3 @@
-/*
-Project: bsreadrepeater
-License: GNU General Public License v3.0
-Authors: Dominik Werder <dominik.werder@gmail.com>
-*/
-
 #include <bitshuffle.h>
 #include <bsr_chnhandler.h>
 #include <bsr_json.h>
@@ -18,9 +12,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <stdlib.h>
 #include <time.h>
 
-#define PRINT_RECEIVED 0
-
-static int const NBUF = 1024 * 128;
+static int const PRINT_RECEIVED = 0;
 static int const DECOMP_BUF_MAX = 1024 * 128;
 
 enum HandlerState {
@@ -104,6 +96,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->more_last = 0;
     self->mpc = 0;
     self->mpmsgc = 0;
+    self->mpmsglen = 0;
     self->printed_compr_unsup = 0;
     self->received = 0;
     self->sentok = 0;
@@ -116,8 +109,12 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->dhparsed = 0;
     self->dhdecompr = 0;
     self->json_parse_errors = 0;
+    self->data_header_lz4_count = 0;
+    self->data_header_bslz4_count = 0;
     self->input_reopened = 0;
     self->stats = stats;
+    ec = bsr_ema_init(&self->mpmsglen_ema);
+    NZRET(ec);
     self->socks_out = NULL;
     self->buf = malloc(DECOMP_BUF_MAX);
     NULLRET(self->buf);
@@ -168,6 +165,7 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     self->more_last = 0;
     self->input_reopened += 1;
     self->stats->input_reopened += 1;
+    fprintf(stderr, "INFO  bsr_chnhandler_reopen_input [%s] done\n", self->addr_inp);
     return 0;
 }
 
@@ -252,19 +250,19 @@ void cleanup_gstring(GString **k) {
     }
 }
 
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll) {
-    poller = poller;
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll) {
     int ec;
     uint64_t now = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
-    int sockflags;
-    {
-        size_t vl = sizeof(sockflags);
-        ec = zmq_getsockopt(self->sock_inp, ZMQ_EVENTS, &sockflags, &vl);
-    }
     if (self->state == RECV) {
-        if ((sockflags & ZMQ_POLLIN) == 0) {
-            fprintf(stderr, "RECV but not POLLIN\n");
+        if ((events & ZMQ_POLLIN) == 0) {
+            fprintf(stderr, "ERROR  RECV but not POLLIN\n");
             return -1;
+        }
+        int64_t max_msg_size = 0;
+        if (0) {
+            size_t vl = sizeof(int64_t);
+            ec = zmq_getsockopt(self->sock_inp, ZMQ_MAXMSGSIZE, &max_msg_size, &vl);
+            NZRET(ec);
         }
         int do_recv = 1;
         while (do_recv) {
@@ -276,19 +274,17 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     do_recv = 0;
                 } else {
                     do_recv = 0;
-                    fprintf(stderr, "error in recv %d  %s\n", errno, zmq_strerror(errno));
+                    fprintf(stderr, "ERROR  in recv %d  %s\n", errno, zmq_strerror(errno));
                     return -1;
                 }
             } else {
                 self->ts_recv_last = tspoll;
                 self->recv_bytes += n;
                 self->stats->recv_bytes += n;
+                self->mpmsglen += (uint32_t)n;
                 char *buf = zmq_msg_data(&msgin);
                 self->received += 1;
                 self->stats->received += 1;
-                if (n > NBUF) {
-                    self->stats->recv_buf_too_small += 1;
-                }
                 int more = zmq_msg_more(&msgin);
                 int const NHEXBUF = 16;
                 char hexbuf[2 * NHEXBUF + 4];
@@ -296,13 +292,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     int nn = NHEXBUF;
                     if (n < nn) {
                         nn = n;
-                    };
+                    }
                     int rawmax = 7;
                     if (n < rawmax) {
                         rawmax = n;
-                    };
+                    }
                     to_hex(hexbuf, (uint8_t *)buf, nn);
-                    fprintf(stderr, "Received: len %d  more %d  (%s) [%.*s]\n", n, more, hexbuf, rawmax, buf);
+                    fprintf(stderr, "DEBUG  Received: len %d  more %d  (%s) [%.*s]\n", n, more, hexbuf, rawmax, buf);
                 }
                 if (self->more_last == 1) {
                     self->mpc += 1;
@@ -322,14 +318,14 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
+                            fprintf(stderr, "WARN  can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                                    self->addr_inp, self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
                         }
                     } else {
                         self->mhparsed += 1;
                         self->dh_compr = header->compr;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
+                            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
                                     self->addr_inp, self->mpmsgc, self->mpc, header->compr, log->str);
                         }
                     }
@@ -340,22 +336,51 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                     int jslen = n;
                     GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
                     if (self->dh_compr == 1) {
+                        self->data_header_bslz4_count += 1;
+                        uint64_t aa;
+                        uint32_t bb;
+                        {
+                            char *p = (char *)&aa;
+                            p[0] = mb[7];
+                            p[1] = mb[6];
+                            p[2] = mb[5];
+                            p[3] = mb[4];
+                            p[4] = mb[3];
+                            p[5] = mb[2];
+                            p[6] = mb[1];
+                            p[7] = mb[0];
+                        }
+                        {
+                            char *p = (char *)&bb;
+                            p[0] = mb[11];
+                            p[1] = mb[10];
+                            p[2] = mb[9];
+                            p[3] = mb[8];
+                        }
+                        fprintf(stderr, "bslz4  aa %" PRIu64 "  bb %" PRIu32 "\n", aa, bb);
+                        // TODO also get the element size?? or is that part of the deshuffle routine? Decouple!!
+                        // TODO decouple bit shuffling and lz4 in order to use safe lz4.
+                        int64_t bsn = bshuf_decompress_lz4(mb + 12, self->buf, n - 12, 1, 0);
+                        fprintf(stderr, "bslz4  bsn %" PRIi64 "\n", bsn);
                         if (self->printed_compr_unsup < 10) {
-                            fprintf(stderr, "ERROR bitshuffle not yet supported for data header compression\n");
+                            fprintf(stderr, "WARN  bitshuffle not yet supported for data header compression\n");
                             self->printed_compr_unsup += 1;
                         }
                     }
                     if (self->dh_compr == 2) {
-                        int b;
-                        char *p = (char *)&b;
-                        p[0] = mb[3];
-                        p[1] = mb[2];
-                        p[2] = mb[1];
-                        p[3] = mb[0];
+                        self->data_header_lz4_count += 1;
+                        uint32_t b;
+                        {
+                            char *p = (char *)&b;
+                            p[0] = mb[3];
+                            p[1] = mb[2];
+                            p[2] = mb[1];
+                            p[3] = mb[0];
+                        }
                         ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, DECOMP_BUF_MAX);
                         if (ec < 0) {
                             if (self->printed_compr_unsup < 10) {
-                                fprintf(stderr, "lz4 decompress error %d  len %d\n", ec, b);
+                                fprintf(stderr, "WARN  lz4 decompress error %d  len %d\n", ec, b);
                                 self->printed_compr_unsup += 1;
                             }
                         } else {
@@ -375,13 +400,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
+                            fprintf(stderr, "WARN  can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                                    self->addr_inp, self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
                         }
                     } else {
                         self->dhparsed += 1;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "GOOD PARSE     %s  (%" PRIu64 ", %d)\n%s\n-----\n", self->addr_inp,
+                            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\n%s\n-----\n", self->addr_inp,
                                     self->mpmsgc, self->mpc, log->str);
                         }
                     }
@@ -409,11 +434,11 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                                     self->stats->eagain += 1;
                                 }
                             } else {
-                                fprintf(stderr, "chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
+                                fprintf(stderr, "ERROR  chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
                                 return -1;
-                            };
+                            }
                         } else if (n2 != n) {
-                            fprintf(stderr, "chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
+                            fprintf(stderr, "ERROR  chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
                             return -1;
                         } else {
                             // Message is accepted by zmq.
@@ -428,22 +453,22 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller 
                             } else {
                                 so->in_multipart = 0;
                             }
-                        };
+                        }
                         it = it->next;
                     }
                 }
-                self->more_last = more;
                 if (more == 0) {
                     self->mpmsgc += 1;
+                    ec = bsr_ema_update(&self->mpmsglen_ema, (float)self->mpmsglen);
+                    NZRET(ec);
+                    self->mpmsglen = 0;
                 }
+                self->more_last = more;
             }
         }
     } else {
-        fprintf(stderr, "chnhandler unknown state: %d\n", self->state);
+        fprintf(stderr, "ERROR  chnhandler unknown state: %d\n", self->state);
         return -1;
-    }
-    if (bsr_statistics_ms_since_last_print(self->stats) > 4000) {
-        bsr_statistics_print_now(self->stats);
     }
     return 0;
 }

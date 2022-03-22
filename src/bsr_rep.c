@@ -18,6 +18,7 @@
 #include <time.h>
 #include <zmq.h>
 
+uint32_t const GLOBAL_STATS_PRINT_DT_MS = 4000;
 int64_t const IDLE_CHECK_DT_MS = 30000;
 int64_t const MAX_IDLE_MS = 120000;
 size_t const MAXSTR = 128;
@@ -96,14 +97,81 @@ static ERRT remove_and_add_source(struct bsr_memreq *memreq, struct bsr_chnhandl
     return 0;
 }
 
+static ERRT idle_source_check(struct bsrep *self, struct HandlerList *handler_list, struct bsr_memreq *memreq,
+                              struct timespec tsnow) {
+    int ec;
+    clock_gettime(CLOCK_REALTIME, &self->stats.datetime_idle_check_last);
+    uint64_t checked_idle = 0;
+    uint64_t found_idle = 0;
+    uint64_t ix = 0;
+    GList *p1 = handler_list->list;
+    while (p1 != NULL && ix < self->inactive_check_next_ix) {
+        if (p1->next == NULL) {
+            self->inactive_check_next_ix = 0;
+            p1 = handler_list->list;
+            break;
+        } else {
+            ix += 1;
+            p1 = p1->next;
+        }
+    }
+    while (p1 != NULL) {
+        struct Handler *h = handler_list_get_data(p1);
+        if (h->kind == SourceHandler) {
+            struct bsr_chnhandler *h2 = &h->handler.src;
+            int64_t dt = time_delta_mu(h2->ts_recv_last, tsnow);
+            if (dt > MAX_IDLE_MS * 1000) {
+                h2->ts_recv_last = tsnow;
+                if (FALSE) {
+                    ec = remove_and_add_source(memreq, h2);
+                    NZRET(ec);
+                }
+                if (TRUE) {
+                    ec = bsr_chnhandler_reopen_input(h2);
+                    NZRET(ec);
+                }
+                found_idle += 1;
+            }
+            checked_idle += 1;
+        }
+        if (p1->next == NULL) {
+            self->inactive_check_next_ix = 0;
+            p1 = handler_list->list;
+            break;
+        } else {
+            self->inactive_check_next_ix += 1;
+            p1 = p1->next;
+        }
+        if (found_idle >= 1) {
+            break;
+        }
+    }
+    if (found_idle != 0) {
+        fprintf(stderr, "idle checked  checked_idle %" PRIu64 "  found_idle %" PRIu64 "\n", checked_idle, found_idle);
+    }
+    if (found_idle != 0) {
+    } else {
+        self->ts_inactive_check_last = tsnow;
+    }
+    return 0;
+}
+
 static ERRT bsrep_run_inner(struct bsrep *self) {
     int ec;
     bsr_statistics_init(&self->stats);
 
     void *ctx __attribute__((cleanup(cleanup_zmq_ctx))) = zmq_ctx_new();
     NULLRET(ctx);
-    if (1) {
+    if (TRUE) {
         ec = zmq_ctx_set(ctx, ZMQ_IPV6, 1);
+        NZRET(ec);
+    }
+    if (TRUE) {
+        ec = zmq_ctx_set(ctx, ZMQ_IO_THREADS, 1);
+        NZRET(ec);
+    }
+    if (TRUE) {
+        ec = zmq_ctx_set(ctx, ZMQ_MAX_SOCKETS, 1024 * 4);
         NZRET(ec);
     }
 
@@ -168,6 +236,9 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         struct timespec ts2;
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 200);
+        if (FALSE) {
+            fprintf(stderr, "TRACE  poll nev %d\n", nev);
+        }
         self->polls_count += 1;
         clock_gettime(CLOCK_MONOTONIC, &ts2);
         {
@@ -211,11 +282,11 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
                 return -1;
             }
         }
+        struct timespec ts3;
+        clock_gettime(CLOCK_MONOTONIC, &ts3);
         {
             // Gather statistics on required time to process the events.
             struct bsr_statistics *stats = &self->stats;
-            struct timespec ts3;
-            clock_gettime(CLOCK_MONOTONIC, &ts3);
             float const k = 0.05f;
             int64_t dt = time_delta_mu(ts2, ts3);
             float d1 = (float)dt - stats->process_ema;
@@ -225,62 +296,13 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
                 fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats->process_ema,
                         sqrtf(stats->process_emv));
             }
-            if (time_delta_mu(self->ts_inactive_check_last, ts3) > IDLE_CHECK_DT_MS * 1000) {
-                clock_gettime(CLOCK_REALTIME, &self->stats.datetime_idle_check_last);
-                uint64_t checked_idle = 0;
-                uint64_t found_idle = 0;
-                uint64_t ix = 0;
-                GList *p1 = handler_list.list;
-                while (p1 != NULL && ix < self->inactive_check_next_ix) {
-                    if (p1->next == NULL) {
-                        self->inactive_check_next_ix = 0;
-                        p1 = handler_list.list;
-                        break;
-                    } else {
-                        ix += 1;
-                        p1 = p1->next;
-                    }
-                }
-                while (p1 != NULL) {
-                    struct Handler *h = handler_list_get_data(p1);
-                    if (h->kind == SourceHandler) {
-                        struct bsr_chnhandler *h2 = &h->handler.src;
-                        int64_t dt = time_delta_mu(h2->ts_recv_last, ts3);
-                        if (dt > MAX_IDLE_MS * 1000) {
-                            h2->ts_recv_last = ts3;
-                            if (FALSE) {
-                                ec = remove_and_add_source(g_memreq, h2);
-                                NZRET(ec);
-                            }
-                            if (TRUE) {
-                                ec = bsr_chnhandler_reopen_input(h2);
-                                NZRET(ec);
-                            }
-                            found_idle += 1;
-                        }
-                        checked_idle += 1;
-                    }
-                    if (p1->next == NULL) {
-                        self->inactive_check_next_ix = 0;
-                        p1 = handler_list.list;
-                        break;
-                    } else {
-                        self->inactive_check_next_ix += 1;
-                        p1 = p1->next;
-                    }
-                    if (found_idle >= 1) {
-                        break;
-                    }
-                }
-                if (found_idle != 0) {
-                    fprintf(stderr, "idle checked  checked_idle %" PRIu64 "  found_idle %" PRIu64 "\n", checked_idle,
-                            found_idle);
-                }
-                if (found_idle != 0) {
-                } else {
-                    self->ts_inactive_check_last = ts3;
-                }
-            }
+        }
+        if (FALSE && time_delta_mu(self->ts_inactive_check_last, ts3) > IDLE_CHECK_DT_MS * 1000) {
+            ec = idle_source_check(self, &handler_list, g_memreq, ts3);
+            NZRET(ec);
+        }
+        if (bsr_statistics_ms_since_last_print(&self->stats) > GLOBAL_STATS_PRINT_DT_MS) {
+            bsr_statistics_print_now(&self->stats);
         }
     }
     return 0;

@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+char const *const RECONNECT_SOURCE = "reconnect-source";
+
 enum HandlerState {
     RECV = 1,
     SEND = 2,
@@ -295,9 +297,15 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "input reopened %" PRIu64 "\n", h->input_reopened);
                             str = g_string_append(str, s);
-                            str = g_string_append(str, "+++   ++++\n");
+                            {
+                                float ema = h->mpmsglen_ema.ema;
+                                float emv = h->mpmsglen_ema.emv;
+                                snprintf(s, sizeof(s), "msglen emav (kB)  %.3f  %.3f\n", ema / 1024, sqrtf(emv) / 1024);
+                                str = g_string_append(str, s);
+                            }
+                            str = g_string_append(str, "+++++  channel map begin\n");
                             channel_map_str(h->chnmap, &str);
-                            str = g_string_append(str, "---   ----\n");
+                            str = g_string_append(str, "-----  channel map end\n");
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;
@@ -390,6 +398,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                     char *rep = "add-output: done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-source", buf, 13) == 0) {
+                    // TODO factor in function call to catch errors and report to client:
                     struct SplitMap sm;
                     bsr_str_split((char *)buf, n, &sm);
                     if (sm.n != 2) {
@@ -410,7 +419,38 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             }
                         }
                     }
-                    char *rep = "remove-source: done";
+                    char *rep = "done";
+                    zmq_send(self->socket, rep, strlen(rep), 0);
+                } else if ((size_t)n >= strlen(RECONNECT_SOURCE) &&
+                           memcmp(RECONNECT_SOURCE, buf, strlen(RECONNECT_SOURCE)) == 0) {
+                    // TODO factor in function call to catch errors and report to client:
+                    struct SplitMap sm;
+                    bsr_str_split((char *)buf, n, &sm);
+                    if (sm.n != 2) {
+                        fprintf(stderr, "ERROR wrong number of parameters\n");
+                    } else {
+                        buf[n] = 0;
+                        *(sm.end[0]) = 0;
+                        *(sm.end[1]) = 0;
+                        fprintf(stderr, "Reconnect source [%s] [%s]\n", sm.beg[0], sm.beg[1]);
+                        struct Handler *h = handler_list_find_by_input_addr_2(self->handler_list, sm.beg[1]);
+                        if (h == NULL) {
+                            fprintf(stderr, "ERROR can not find handler for source %s\n", sm.beg[1]);
+                        } else {
+                            if (h->kind == SourceHandler) {
+                                struct bsr_chnhandler *h2 = &h->handler.src;
+                                ec = bsr_chnhandler_reopen_input(h2);
+                                if (ec != 0) {
+                                    // TODO return error message
+                                } else {
+                                    // TODO return all-good message
+                                }
+                            } else {
+                                // TODO return error message
+                            }
+                        }
+                    }
+                    char *rep = "done";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n >= 13 && memcmp("remove-output", buf, 13) == 0) {
                     struct SplitMap sm;
@@ -499,7 +539,7 @@ ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *
         break;
     }
     case SourceHandler: {
-        ec = bsr_chnhandler_handle_event(&self->handler.src, poller, tspoll);
+        ec = bsr_chnhandler_handle_event(&self->handler.src, events, tspoll);
         NZRET(ec);
         break;
     }

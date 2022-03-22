@@ -1,5 +1,6 @@
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
+#include <bsr_ema.h>
 #include <bsr_poller.h>
 #include <err.h>
 #include <glib.h>
@@ -27,6 +28,7 @@ struct bsr_chnhandler {
     int more_last;
     int mpc;
     uint64_t mpmsgc;
+    uint32_t mpmsglen;
     void *sock_inp;
     // TODO better use a typed container:
     GList *socks_out;
@@ -49,16 +51,19 @@ struct bsr_chnhandler {
     uint64_t sent_bytes;
     uint64_t bsread_errors;
     uint64_t json_parse_errors;
+    uint64_t data_header_lz4_count;
+    uint64_t data_header_bslz4_count;
     uint64_t input_reopened;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
+    struct bsr_ema mpmsglen_ema;
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats);
 ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, struct bsr_poller *poller, struct timespec tspoll);
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
 int bsr_chnhandler_outputs_count(struct bsr_chnhandler *self);
