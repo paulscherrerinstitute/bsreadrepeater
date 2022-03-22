@@ -1,6 +1,7 @@
 #include <bitshuffle.h>
 #include <bsr_chnhandler.h>
 #include <bsr_json.h>
+#include <bsr_log.h>
 #include <bsr_sockhelp.h>
 #include <bsr_stats.h>
 #include <err.h>
@@ -38,15 +39,22 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
         self->bsread_main_header = NULL;
     }
     if (self->sock_inp != NULL) {
+        TRACE("remove sock_inp from poller");
         ec = zmq_poller_remove(self->poller->poller, self->sock_inp);
-        if (ec == -1) {
-            fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_poller_remove inp %d\n", ec);
+        if (ec == EINVAL) {
+            fprintf(stderr, "WARN cleanup_bsr_chnhandler zmq_poller_remove EINVAL %d %s\n", errno, zmq_strerror(errno));
+        } else if (ec == -1) {
+            fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_poller_remove %d %s\n", errno, zmq_strerror(errno));
         }
+        TRACE("zmq_close");
         ec = zmq_close(self->sock_inp);
         if (ec == -1) {
-            fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_close inp %d\n", ec);
+            fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_close %d %s\n", errno, zmq_strerror(errno));
         }
+        TRACE("sock_inp = NULL");
         self->sock_inp = NULL;
+    }
+    {
         GList *it = self->socks_out;
         while (it != NULL) {
             struct sockout *data = it->data;
@@ -54,18 +62,22 @@ ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self) {
             void *sock = data->sock;
             ec = zmq_poller_remove(self->poller->poller, sock);
             if (ec == -1) {
-                fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_poller_remove out %d\n", ec);
+                fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_poller_remove output %d %s\n", errno,
+                        zmq_strerror(errno));
             }
             ec = zmq_close(sock);
             if (ec == -1) {
                 fprintf(stderr, "ERROR cleanup_bsr_chnhandler zmq_close out %d %s\n", errno, zmq_strerror(errno));
             }
+            data->sock = NULL;
             free(data);
             it->data = NULL;
             it = it->next;
         }
-        g_list_free(self->socks_out);
-        self->socks_out = NULL;
+        if (self->socks_out != NULL) {
+            g_list_free(self->socks_out);
+            self->socks_out = NULL;
+        }
     }
     return 0;
 }
@@ -88,6 +100,7 @@ void cleanup_struct_sockout_ptr(struct sockout **k) {
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
                          struct bsr_statistics *stats) {
     int ec;
+    self->sock_inp = NULL;
     self->poller = poller;
     self->user_data = user_data;
     strncpy(self->addr_inp, addr_inp, ADDR_CAP);
@@ -113,9 +126,9 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->data_header_bslz4_count = 0;
     self->input_reopened = 0;
     self->stats = stats;
+    self->socks_out = NULL;
     ec = bsr_ema_init(&self->mpmsglen_ema);
     NZRET(ec);
-    self->socks_out = NULL;
     self->buf = malloc(DECOMP_BUF_MAX);
     NULLRET(self->buf);
     clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);

@@ -82,10 +82,9 @@ ERRT bsr_cmdchn_socket_reopen(struct bsr_cmdchn *self, struct bsr_poller *poller
     return 0;
 }
 
-void cleanup_struct_Handler_ptr(struct Handler **k) {
+static void cleanup_struct_Handler_ptr(struct Handler **k) {
     if (*k != NULL) {
-        // TODO used from where? replaceable?
-        // TODO cleanup the interior as well if needed.
+        cleanup_struct_Handler(*k);
         free(*k);
         *k = NULL;
     }
@@ -366,10 +365,13 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             NULLRET(handler);
                             handler->kind = SourceHandler;
                             ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], self->stats);
-                            NZRET(ec);
-                            ec = handler_list_add(self->handler_list, handler);
-                            NZRET(ec);
-                            handler = NULL;
+                            if (ec != 0) {
+                                fprintf(stderr, "ERROR can not initialize handler for [%s]\n", sm.beg[1]);
+                            } else {
+                                ec = handler_list_add(self->handler_list, handler);
+                                NZRET(ec);
+                                handler = NULL;
+                            }
                         }
                     }
                     char *rep = "add-source: done";

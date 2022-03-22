@@ -1,14 +1,18 @@
 import argparse
 import zmq
 
-parser = argparse.ArgumentParser(description='')
+parser = argparse.ArgumentParser()
 parser.add_argument('--cmd')
 args = parser.parse_args()
-print(f"cmd: {args.cmd}")
-
 ctx = zmq.Context()
-sock = zmq.Socket(ctx, zmq.REQ)
-sock.connect("tcp://127.0.0.1:4242")
-sock.send(args.cmd.encode())
-b = sock.recv()
-print(f"Response:\n{b.decode()}")
+cmd_addr = "tcp://127.0.0.1:4242"
+
+def cmd(ctx, s):
+    global cmd_addr
+    sock = zmq.Socket(ctx, zmq.REQ)
+    sock.connect(cmd_addr)
+    sock.send(s.encode())
+    b = sock.recv()
+    print("Response:", b.decode())
+
+cmd(ctx, args.cmd)

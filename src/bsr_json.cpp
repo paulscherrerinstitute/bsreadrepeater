@@ -43,8 +43,8 @@ struct channel_info {
 };
 
 struct channel_map {
-    channel_map() { fprintf(stderr, "struct channel_map CTOR\n"); }
-    ~channel_map() { fprintf(stderr, "struct channel_map DESTRUCTOR\n"); }
+    channel_map() { fprintf(stderr, "TRACE  struct channel_map ctor\n"); }
+    ~channel_map() { fprintf(stderr, "TRACE  struct channel_map dtor\n"); }
     std::unordered_map<std::string, struct channel_info> map;
 };
 

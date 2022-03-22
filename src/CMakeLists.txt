@@ -1,5 +1,6 @@
 add_executable(bsrep
 ../include/bsreadrepeater/err.h
+../include/bsreadrepeater/bsr_log.h
 ../include/bsreadrepeater/hex.h
 hex.c
 ../include/bsreadrepeater/bsr_ema.h
