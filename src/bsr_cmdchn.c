@@ -1,5 +1,6 @@
 #include <bsr_cmdchn.h>
 #include <bsr_json.h>
+#include <bsr_json_commands.h>
 #include <bsr_stats.h>
 #include <bsr_str.h>
 #include <err.h>
@@ -231,7 +232,55 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
             } else {
                 buf[n] = 0;
                 fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
-                if (n == 4 && memcmp("exit", buf, n) == 0) {
+                if (n > 1 && buf[0] == '{') {
+                    struct bsr_json_command cmd;
+                    ec = parse_json_command((char const *)buf, n, &cmd);
+                    if (ec != 0) {
+                        fprintf(stderr, "JSON command parse error\n");
+                        char const *rep = "JSON parse error";
+                        zmq_send(self->socket, rep, strlen(rep), 0);
+                    } else {
+                        fprintf(stderr, "OK JSON command\n");
+                        if (cmd.kind == ADD_SOURCE) {
+                            struct command_add_source cmd2 = cmd.inner.add_source;
+                            char const *src = cmd2.source;
+                            fprintf(stderr, "Add source [%s]\n", src);
+                            struct Handler *h2 = handler_list_find_by_input_addr_2(self->handler_list, src);
+                            if (h2 != NULL) {
+                                fprintf(stderr, "ERROR source [%s] is already added\n", src);
+                            } else {
+                                struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
+                                handler = malloc(sizeof(struct Handler));
+                                NULLRET(handler);
+                                handler->kind = SourceHandler;
+                                ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, src, cmd2.rcvhwm,
+                                                         cmd2.rcvbuf, self->stats);
+                                if (ec != 0) {
+                                    fprintf(stderr, "ERROR can not initialize handler for [%s]\n", src);
+                                } else {
+                                    ec = handler_list_add(self->handler_list, handler);
+                                    NZRET(ec);
+                                    handler = NULL;
+                                }
+                            }
+                        } else if (cmd.kind == ADD_OUTPUT) {
+                            struct command_add_output cmd2 = cmd.inner.add_output;
+                            fprintf(stderr, "add-output  [%s]  [%s]  %d  %d\n", cmd2.source, cmd2.output, cmd2.sndhwm,
+                                    cmd2.sndbuf);
+                            struct bsr_chnhandler *h = handler_list_find_by_input_addr(self->handler_list, cmd2.source);
+                            if (h == NULL) {
+                                fprintf(stderr, "ERROR can not find handler for source %s\n", cmd2.source);
+                            } else {
+                                ec = bsr_chnhandler_add_out(h, cmd2.output, cmd2.sndhwm, cmd2.sndbuf);
+                                if (ec != 0) {
+                                    fprintf(stderr, "ERROR could not add output\n");
+                                }
+                            }
+                        }
+                        char const *rep = "received json command";
+                        zmq_send(self->socket, rep, strlen(rep), 0);
+                    }
+                } else if (n == 4 && memcmp("exit", buf, n) == 0) {
                     cmd->ty = CmdExit;
                     zmq_send(self->socket, "exit", 4, 0);
                 } else if (n == 5 && memcmp("stats", buf, 5) == 0) {
@@ -278,23 +327,27 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             char s[256];
                             snprintf(s, sizeof(s), "received %" PRIu64 "\n", h->received);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "main header parsed %" PRIu64 "\n", h->mhparsed);
+                            snprintf(s, sizeof(s), "mhparsed %" PRIu64 "\n", h->mhparsed);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "data header parsed %" PRIu64 "\n", h->dhparsed);
+                            snprintf(s, sizeof(s), "dhparsed %" PRIu64 "\n", h->dhparsed);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "data header decompressed %" PRIu64 "\n", h->dhdecompr);
+                            snprintf(s, sizeof(s), "json_parse_errors %" PRIu64 "\n", h->json_parse_errors);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "sent %" PRIu64 "\n", h->sentok);
+                            snprintf(s, sizeof(s), "dhdecompr %" PRIu64 "\n", h->dhdecompr);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "received bytes %" PRIu64 "\n", h->recv_bytes);
+                            snprintf(s, sizeof(s), "data_header_lz4_count %" PRIu64 "\n", h->data_header_lz4_count);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "sent bytes %" PRIu64 "\n", h->sent_bytes);
+                            snprintf(s, sizeof(s), "data_header_bslz4_count %" PRIu64 "\n", h->data_header_bslz4_count);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "bsread errors %" PRIu64 "\n", h->bsread_errors);
+                            snprintf(s, sizeof(s), "sentok %" PRIu64 "\n", h->sentok);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "json parse errors %" PRIu64 "\n", h->json_parse_errors);
+                            snprintf(s, sizeof(s), "recv_bytes %" PRIu64 "\n", h->recv_bytes);
                             str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "input reopened %" PRIu64 "\n", h->input_reopened);
+                            snprintf(s, sizeof(s), "sent_bytes %" PRIu64 "\n", h->sent_bytes);
+                            str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "bsread_errors %" PRIu64 "\n", h->bsread_errors);
+                            str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "input_reopened %" PRIu64 "\n", h->input_reopened);
                             str = g_string_append(str, s);
                             {
                                 float ema = h->mpmsglen_ema.ema;
@@ -364,7 +417,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             handler = malloc(sizeof(struct Handler));
                             NULLRET(handler);
                             handler->kind = SourceHandler;
-                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], self->stats);
+                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], 200, 1024 * 128,
+                                                     self->stats);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR can not initialize handler for [%s]\n", sm.beg[1]);
                             } else {
@@ -391,7 +445,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         if (h == NULL) {
                             fprintf(stderr, "ERROR can not find handler for source %s\n", sm.beg[1]);
                         } else {
-                            ec = bsr_chnhandler_add_out(h, sm.beg[2]);
+                            ec = bsr_chnhandler_add_out(h, sm.beg[2], 140, 1024 * 128);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR could not add output\n");
                             }

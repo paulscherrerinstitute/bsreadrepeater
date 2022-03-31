@@ -2,11 +2,6 @@
 #include <err.h>
 #include <zmq.h>
 
-#define RCVHWM 128
-#define RCVBUF (1024 * 128)
-#define SNDHWM 128
-#define SNDBUF (1024 * 128)
-
 static size_t MAX_MSG_SIZE = 1024 * 1024 * 20;
 
 ERRT cleanup_zmq_ctx(void **self) {
@@ -133,28 +128,28 @@ static ERRT set_keepalive(void *sock) {
     return 0;
 }
 
-ERRT set_pull_sock_opts(void *sock) {
+ERRT set_pull_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
     ec = set_keepalive(sock);
     NZRET(ec);
-    ec = set_rcvhwm(sock, RCVHWM);
+    ec = set_rcvhwm(sock, hwm);
     NZRET(ec);
-    ec = set_rcvbuf(sock, RCVBUF);
+    ec = set_rcvbuf(sock, buf);
     NZRET(ec);
     return 0;
 }
 
-ERRT set_push_sock_opts(void *sock) {
+ERRT set_push_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
     ec = set_keepalive(sock);
     NZRET(ec);
-    ec = set_sndhwm(sock, SNDHWM);
+    ec = set_sndhwm(sock, hwm);
     NZRET(ec);
-    ec = set_sndbuf(sock, SNDBUF);
+    ec = set_sndbuf(sock, buf);
     NZRET(ec);
     return 0;
 }

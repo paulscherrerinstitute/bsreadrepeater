@@ -26,6 +26,8 @@ bsr_ctx1.c
 ../include/bsreadrepeater/bsr_rep.h
 bsr_rep.c
 bsr_json.cpp
+../include/bsreadrepeater/bsr_json_commands.h
+bsr_json_commands.cpp
 ./bitshuffle/lz4.c
 ./bitshuffle/lz4.h
 ./bitshuffle/iochain.c

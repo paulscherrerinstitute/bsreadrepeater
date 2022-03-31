@@ -97,12 +97,14 @@ void cleanup_struct_sockout_ptr(struct sockout **k) {
     }
 }
 
-ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
-                         struct bsr_statistics *stats) {
+ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char const *addr_inp,
+                         int inp_rcvhwm, int inp_rcvbuf, struct bsr_statistics *stats) {
     int ec;
     self->sock_inp = NULL;
     self->poller = poller;
     self->user_data = user_data;
+    self->inp_rcvhwm = inp_rcvhwm;
+    self->inp_rcvbuf = inp_rcvbuf;
     strncpy(self->addr_inp, addr_inp, ADDR_CAP);
     self->addr_inp[ADDR_CAP - 1] = 0;
     self->state = RECV;
@@ -143,13 +145,18 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->bsread_main_header->pulse = 0;
     self->bsread_main_header->timestamp = 0;
     g_array_set_clear_func(self->channels, clear_channel_element);
-    self->sock_inp = zmq_socket(poller->ctx, ZMQ_PULL);
+    return 0;
+}
+
+ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self) {
+    int ec;
+    self->sock_inp = zmq_socket(self->poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
-    ec = set_pull_sock_opts(self->sock_inp);
+    ec = set_pull_sock_opts(self->sock_inp, self->inp_rcvhwm, self->inp_rcvbuf);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
     ZMQ_NEGONERET(ec);
-    ec = zmq_poller_add(poller->poller, self->sock_inp, user_data, ZMQ_POLLIN);
+    ec = zmq_poller_add(self->poller->poller, self->sock_inp, self->user_data, ZMQ_POLLIN);
     ZMQ_NEGONERET(ec);
     return 0;
 }
@@ -169,7 +176,7 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     self->sock_inp = NULL;
     self->sock_inp = zmq_socket(self->poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
-    ec = set_pull_sock_opts(self->sock_inp);
+    ec = set_pull_sock_opts(self->sock_inp, self->inp_rcvhwm, self->inp_rcvbuf);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
     ZMQ_NEGONERET(ec);
@@ -182,10 +189,12 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     return 0;
 }
 
-ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
+ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr, int sndhwm, int sndbuf) {
     int ec;
     struct sockout *data __attribute__((cleanup(cleanup_struct_sockout_ptr))) = malloc(sizeof(struct sockout));
     NULLRET(data);
+    data->sndhwm = sndhwm;
+    data->sndbuf = sndbuf;
     strncpy(data->addr, addr, ADDR_CAP);
     data->addr[ADDR_CAP - 1] = 0;
     data->in_multipart = 0;
@@ -195,7 +204,7 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr) {
     data->eagain_multipart = 0;
     void *sock __attribute__((cleanup(cleanup_zmq_socket))) = zmq_socket(self->poller->ctx, ZMQ_PUSH);
     ZMQ_NULLRET(sock);
-    ec = set_push_sock_opts(sock);
+    ec = set_push_sock_opts(sock, data->sndhwm, data->sndbuf);
     NZRET(ec);
     ec = zmq_bind(sock, data->addr);
     if (ec == -1) {
@@ -327,7 +336,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     self->dh_compr = 0;
                     GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
                     struct bsread_main_header *header = self->bsread_main_header;
-                    if (json_parse_main_header(buf, n, header, &log) != 0) {
+                    ec = json_parse_main_header(buf, n, header, &log);
+                    if (ec != 0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
@@ -408,8 +418,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         chnmap = self->chnmap;
                     }
                     struct bsread_data_header header = {0};
-                    if (json_parse_data_header(jsstr, jslen, &header, now, chnmap, self->bsread_main_header, &log) !=
-                        0) {
+                    ec = json_parse_data_header(jsstr, jslen, &header, now, chnmap, self->bsread_main_header, &log);
+                    if (ec != 0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);

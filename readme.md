@@ -82,6 +82,15 @@ and `OUTPUT` e.g. "tcp://0.0.0.0:4321".
 Creates a PUSH socket on the given `OUTPUT` where clients can connect to.
 
 
+### Add output to a source with zmq queue parameters
+
+This form allows to set the zmq `SNDHWM` and `SNDBUF` values for the output push socket.
+
+It is a JSON command on a single line, e.g.:
+
+`{"kind": "add-output", "source": "SOURCE", "output": "OUTPUT", "sndhwm": 200, "sndbuf": 80000}`
+
+
 ## Remove output from a source
 
 `remove-output,SOURCE,OUTPUT`

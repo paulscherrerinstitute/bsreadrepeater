@@ -10,6 +10,8 @@
 
 struct sockout {
     void *sock;
+    int sndhwm;
+    int sndbuf;
     char addr[ADDR_CAP];
     int in_multipart;
     uint64_t sent_count;
@@ -24,6 +26,8 @@ struct bsr_chnhandler {
     struct bsr_poller *poller;
     void *user_data;
     char addr_inp[ADDR_CAP];
+    int inp_rcvhwm;
+    int inp_rcvbuf;
     int state;
     int more_last;
     int mpc;
@@ -60,10 +64,11 @@ struct bsr_chnhandler {
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
-ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char *addr_inp,
-                         struct bsr_statistics *stats);
+ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char const *addr_inp,
+                         int hwm, int buf, struct bsr_statistics *stats);
+ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll);
-ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr);
+ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr, int sndhwm, int sndbuf);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
 int bsr_chnhandler_outputs_count(struct bsr_chnhandler *self);
