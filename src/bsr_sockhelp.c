@@ -132,8 +132,10 @@ ERRT set_pull_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    ec = set_keepalive(sock);
-    NZRET(ec);
+    if (1) {
+        ec = set_keepalive(sock);
+        NZRET(ec);
+    }
     ec = set_rcvhwm(sock, hwm);
     NZRET(ec);
     ec = set_rcvbuf(sock, buf);
@@ -145,8 +147,10 @@ ERRT set_push_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    ec = set_keepalive(sock);
-    NZRET(ec);
+    if (1) {
+        ec = set_keepalive(sock);
+        NZRET(ec);
+    }
     ec = set_sndhwm(sock, hwm);
     NZRET(ec);
     ec = set_sndbuf(sock, buf);

@@ -258,9 +258,14 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 if (ec != 0) {
                                     fprintf(stderr, "ERROR can not initialize handler for [%s]\n", src);
                                 } else {
-                                    ec = handler_list_add(self->handler_list, handler);
-                                    NZRET(ec);
-                                    handler = NULL;
+                                    ec = bsr_chnhandler_connect(&handler->handler.src);
+                                    if (ec != 0) {
+                                        fprintf(stderr, "ERROR can not connect handler for [%s]\n", src);
+                                    } else {
+                                        ec = handler_list_add(self->handler_list, handler);
+                                        NZRET(ec);
+                                        handler = NULL;
+                                    }
                                 }
                             }
                         } else if (cmd.kind == ADD_OUTPUT) {
@@ -417,18 +422,23 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             handler = malloc(sizeof(struct Handler));
                             NULLRET(handler);
                             handler->kind = SourceHandler;
-                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], 200, 1024 * 128,
-                                                     self->stats);
+                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], 200,
+                                                     1024 * 1024 * 20, self->stats);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR can not initialize handler for [%s]\n", sm.beg[1]);
                             } else {
-                                ec = handler_list_add(self->handler_list, handler);
-                                NZRET(ec);
-                                handler = NULL;
+                                ec = bsr_chnhandler_connect(&handler->handler.src);
+                                if (ec != 0) {
+                                    fprintf(stderr, "ERROR can not connect handler for [%s]\n", sm.beg[1]);
+                                } else {
+                                    ec = handler_list_add(self->handler_list, handler);
+                                    NZRET(ec);
+                                    handler = NULL;
+                                }
                             }
                         }
                     }
-                    char *rep = "add-source: done";
+                    char *rep = "add-source: done (rev2)";
                     zmq_send(self->socket, rep, strlen(rep), 0);
                 } else if (n > 11 && memcmp("add-output,", buf, 11) == 0) {
                     struct SplitMap sm;
