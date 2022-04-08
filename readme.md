@@ -22,9 +22,9 @@ Input sources and output sockets can be added and removed at runtime.
 • Block sources with bsread protocol errors.
 
 
-# Binaries for RHEL 7
+# Binaries for AMD64 - RHEL 7
 
-https://data-api.psi.ch/distri/bsrep-amd64-rhel7.tgz
+<https://data-api.psi.ch/distri/bsrep/index.html>
 
 
 # Run the application

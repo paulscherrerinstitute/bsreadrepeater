@@ -96,6 +96,12 @@ ERRT test_receive() {
 
 int main(int const argc, char const *const *argv) {
     int ec;
+    if (argc == 2) {
+        if (strcmp("--version", argv[1]) == 0) {
+            fprintf(stdout, "%s\n", BSREP_VERSION);
+            return 0;
+        }
+    }
     fprintf(stderr, "bsrep %s\n", BSREP_VERSION);
     {
         // For shared libs, make sure that we got dynamically linked against a compatible version.
