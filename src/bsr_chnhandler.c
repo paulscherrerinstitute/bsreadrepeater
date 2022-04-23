@@ -4,11 +4,13 @@
 #include <bsr_log.h>
 #include <bsr_sockhelp.h>
 #include <bsr_stats.h>
+#include <bsr_str.h>
 #include <err.h>
 #include <errno.h>
 #include <hex.h>
 #include <inttypes.h>
 #include <lz4.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -131,6 +133,11 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->socks_out = NULL;
     ec = bsr_ema_init(&self->mpmsglen_ema);
     NZRET(ec);
+    ec = bsr_ema_init(&self->msg_dt_ema);
+    NZRET(ec);
+    self->msg_dt_ema.k = 0.02;
+    self->msg_dt_ema.ema = 0.8;
+    clock_gettime(CLOCK_MONOTONIC, &self->ts_final_part_last);
     self->buf = malloc(DECOMP_BUF_MAX);
     NULLRET(self->buf);
     clock_gettime(CLOCK_MONOTONIC, &self->last_remember_channels);
@@ -186,6 +193,20 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     self->input_reopened += 1;
     self->stats->input_reopened += 1;
     fprintf(stderr, "INFO  bsr_chnhandler_reopen_input [%s] done\n", self->addr_inp);
+    return 0;
+}
+
+ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self) {
+    int ec;
+    ec = zmq_poller_modify(self->poller->poller, self->sock_inp, 0);
+    ZMQ_NEGONERET(ec);
+    return 0;
+}
+
+ERRT bsr_chnhandler_enable_input(struct bsr_chnhandler *self) {
+    int ec;
+    ec = zmq_poller_modify(self->poller->poller, self->sock_inp, ZMQ_POLLIN);
+    ZMQ_NEGONERET(ec);
     return 0;
 }
 
@@ -341,7 +362,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "WARN  can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                            fprintf(stderr, "WARN  can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
                                     self->addr_inp, self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
                         }
                     } else {
@@ -380,14 +401,21 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                             p[2] = mb[9];
                             p[3] = mb[8];
                         }
-                        fprintf(stderr, "bslz4  aa %" PRIu64 "  bb %" PRIu32 "\n", aa, bb);
+                        // fprintf(stderr, "bslz4  aa %" PRIu64 "  bb %" PRIu32 "\n", aa, bb);
                         // TODO also get the element size?? or is that part of the deshuffle routine? Decouple!!
                         // TODO decouple bit shuffling and lz4 in order to use safe lz4.
+                        // TODO make sure before decompression that our buffer is large enough.
                         int64_t bsn = bshuf_decompress_lz4(mb + 12, self->buf, n - 12, 1, 0);
-                        fprintf(stderr, "bslz4  bsn %" PRIi64 "\n", bsn);
-                        if (self->printed_compr_unsup < 10) {
-                            fprintf(stderr, "WARN  bitshuffle not yet supported for data header compression\n");
-                            self->printed_compr_unsup += 1;
+                        // fprintf(stderr, "bslz4  bsn %" PRIi64 "\n", bsn);
+                        if (bsn < 0) {
+                            if (self->printed_compr_unsup < 10) {
+                                fprintf(stderr, "WARN  data header bitshuffle decompress error %" PRId64 "\n", bsn);
+                                self->printed_compr_unsup += 1;
+                            }
+                        } else {
+                            jsstr = self->buf;
+                            jslen = aa;
+                            self->dhdecompr += 1;
                         }
                     }
                     if (self->dh_compr == 2) {
@@ -403,7 +431,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, DECOMP_BUF_MAX);
                         if (ec < 0) {
                             if (self->printed_compr_unsup < 10) {
-                                fprintf(stderr, "WARN  lz4 decompress error %d  len %d\n", ec, b);
+                                fprintf(stderr, "WARN  data header lz4 decompress error %d  len %d\n", ec, b);
                                 self->printed_compr_unsup += 1;
                             }
                         } else {
@@ -423,7 +451,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "WARN  can not parse  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                            fprintf(stderr, "WARN  can not parse data header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
                                     self->addr_inp, self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
                         }
                     } else {
@@ -485,6 +513,29 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     ec = bsr_ema_update(&self->mpmsglen_ema, (float)self->mpmsglen);
                     NZRET(ec);
                     self->mpmsglen = 0;
+                    int64_t dtint = time_delta_mu(self->ts_final_part_last, tspoll);
+                    self->ts_final_part_last = tspoll;
+                    float dt = ((float)dtint) * 1e-6;
+                    ec = bsr_ema_update(&self->msg_dt_ema, dt);
+                    if (self->msg_dt_ema.ema < 0.008) {
+                        // TODO maybe need flag to not double-add the event?
+                        fprintf(stderr, "WARN timed_events source too fast:  %s  dt %.4f ± %.4f\n", self->addr_inp,
+                                self->msg_dt_ema.ema, sqrtf(self->msg_dt_ema.emv));
+                        self->msg_dt_ema.ema = 2.0;
+                        if (TRUE) {
+                            int64_t tsmu = time_delta_mu(self->stats->timed_events.ts_init, tspoll);
+                            if (tsmu < 0) {
+                                fprintf(stderr, "ERROR  chnhandler non-monotonic clock\n");
+                                return -1;
+                            }
+                            tsmu += 2000000;
+                            ec = bsr_timed_events_add_input_enable(&self->stats->timed_events, self->addr_inp,
+                                                                   (uint64_t)tsmu);
+                            NZRET(ec);
+                            ec = bsr_chnhandler_disable_input(self);
+                            NZRET(ec);
+                        }
+                    }
                 }
                 self->more_last = more;
             }

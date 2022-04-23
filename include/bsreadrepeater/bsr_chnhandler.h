@@ -61,6 +61,8 @@ struct bsr_chnhandler {
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
     struct bsr_ema mpmsglen_ema;
+    struct bsr_ema msg_dt_ema;
+    struct timespec ts_final_part_last;
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
@@ -68,6 +70,8 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
                          int hwm, int buf, struct bsr_statistics *stats);
 ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
+ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self);
+ERRT bsr_chnhandler_enable_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr, int sndhwm, int sndbuf);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);

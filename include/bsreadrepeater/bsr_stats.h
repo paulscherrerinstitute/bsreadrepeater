@@ -1,5 +1,7 @@
 #pragma once
+#include <bsr_timed_events.h>
 #include <err.h>
+#include <glib.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -18,6 +20,7 @@ struct bsr_statistics {
     float process_ema;
     float process_emv;
     uint64_t input_reopened;
+    struct bsr_timed_events timed_events;
 };
 
 ERRT bsr_statistics_init(struct bsr_statistics *self);

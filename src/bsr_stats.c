@@ -2,7 +2,8 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-int bsr_statistics_init(struct bsr_statistics *self) {
+ERRT bsr_statistics_init(struct bsr_statistics *self) {
+    int ec;
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
     self->received = 0;
     self->sentok = 0;
@@ -12,6 +13,9 @@ int bsr_statistics_init(struct bsr_statistics *self) {
     self->poll_wait_ema = 0.0;
     self->poll_wait_emv = 0.0;
     self->input_reopened = 0;
+    // TODO add cleanup logic. Currently only used once.
+    ec = bsr_timed_events_init(&self->timed_events);
+    NZRET(ec);
     return 0;
 }
 
