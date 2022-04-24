@@ -7,10 +7,12 @@ ERRT bsr_ema_init(struct bsr_ema *self) {
     self->k = 0.05;
     self->ema = 0;
     self->emv = 0;
+    self->update_count = 0;
     return 0;
 }
 
 ERRT bsr_ema_update(struct bsr_ema *self, float v) {
+    self->update_count += 1;
     float k = self->k;
     float dv = v - self->ema;
     self->ema += k * dv;

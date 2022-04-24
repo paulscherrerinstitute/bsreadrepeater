@@ -58,13 +58,11 @@ static gboolean stop_on_first(gpointer key, gpointer value, gpointer ud) {
     return TRUE;
 }
 
-ERRT bsr_timed_events_most_recent_key(struct bsr_timed_events *self, uint64_t **retkey, struct timed_event **ret) {
-    // TODO return only a result if time has been reached!
-    struct timespec tsnow;
-    clock_gettime(CLOCK_MONOTONIC, &tsnow);
-    uint64_t tsnowmu = (uint64_t)time_delta_mu(self->ts_init, tsnow);
+ERRT bsr_timed_events_most_recent_key(struct bsr_timed_events *self, struct timespec tsnow, uint64_t **retkey,
+                                      struct timed_event **ret) {
     *retkey = 0;
     *ret = NULL;
+    uint64_t tsnowmu = (uint64_t)time_delta_mu(self->ts_init, tsnow);
     GTree *tree = self->tree;
     if (g_tree_nnodes(tree) > 0) {
         // fprintf(stderr, "timed_events  present\n");
@@ -75,8 +73,8 @@ ERRT bsr_timed_events_most_recent_key(struct bsr_timed_events *self, uint64_t **
             if (*key <= tsnowmu) {
                 TREE_VAL *ev = g_tree_lookup(tree, key);
                 if (FALSE) {
-                    fprintf(stderr, "timed_events  lookup yields %p\n", (void *)ev);
-                    fprintf(stderr, "timed_events  value yields addr %.30s\n", ev->addr);
+                    fprintf(stderr, "TRACE  timed_events  lookup yields %p\n", (void *)ev);
+                    fprintf(stderr, "TRACE  timed_events  value yields addr %.30s\n", ev->addr);
                 }
                 *retkey = key;
                 *ret = ev;

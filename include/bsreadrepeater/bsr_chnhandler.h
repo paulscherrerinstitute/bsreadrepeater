@@ -58,11 +58,14 @@ struct bsr_chnhandler {
     uint64_t data_header_lz4_count;
     uint64_t data_header_bslz4_count;
     uint64_t input_reopened;
+    uint64_t throttling_enable_count;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
     struct bsr_ema mpmsglen_ema;
     struct bsr_ema msg_dt_ema;
     struct timespec ts_final_part_last;
+    char input_disabled;
+    char throttling;
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);

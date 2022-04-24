@@ -354,10 +354,18 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "input_reopened %" PRIu64 "\n", h->input_reopened);
                             str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "throttling_enable_count %" PRIu64 "\n", h->throttling_enable_count);
+                            str = g_string_append(str, s);
                             {
                                 float ema = h->mpmsglen_ema.ema;
                                 float emv = h->mpmsglen_ema.emv;
                                 snprintf(s, sizeof(s), "msglen emav (kB)  %.3f  %.3f\n", ema / 1024, sqrtf(emv) / 1024);
+                                str = g_string_append(str, s);
+                            }
+                            {
+                                float ema = h->msg_dt_ema.ema;
+                                float emv = h->msg_dt_ema.emv;
+                                snprintf(s, sizeof(s), "msg_dt_ema  %.4f  %.4f\n", ema, sqrtf(emv));
                                 str = g_string_append(str, s);
                             }
                             str = g_string_append(str, "+++++  channel map begin\n");

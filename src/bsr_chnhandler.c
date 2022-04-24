@@ -129,6 +129,9 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->data_header_lz4_count = 0;
     self->data_header_bslz4_count = 0;
     self->input_reopened = 0;
+    self->throttling_enable_count = 0;
+    self->input_disabled = 0;
+    self->throttling = 0;
     self->stats = stats;
     self->socks_out = NULL;
     ec = bsr_ema_init(&self->mpmsglen_ema);
@@ -198,6 +201,7 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
 
 ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self) {
     int ec;
+    self->input_disabled = 1;
     ec = zmq_poller_modify(self->poller->poller, self->sock_inp, 0);
     ZMQ_NEGONERET(ec);
     return 0;
@@ -205,6 +209,7 @@ ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self) {
 
 ERRT bsr_chnhandler_enable_input(struct bsr_chnhandler *self) {
     int ec;
+    self->input_disabled = 0;
     ec = zmq_poller_modify(self->poller->poller, self->sock_inp, ZMQ_POLLIN);
     ZMQ_NEGONERET(ec);
     return 0;
@@ -517,27 +522,42 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     self->ts_final_part_last = tspoll;
                     float dt = ((float)dtint) * 1e-6;
                     ec = bsr_ema_update(&self->msg_dt_ema, dt);
-                    if (self->msg_dt_ema.ema < 0.008) {
-                        // TODO maybe need flag to not double-add the event?
-                        fprintf(stderr, "WARN timed_events source too fast:  %s  dt %.4f ± %.4f\n", self->addr_inp,
-                                self->msg_dt_ema.ema, sqrtf(self->msg_dt_ema.emv));
-                        self->msg_dt_ema.ema = 2.0;
-                        if (TRUE) {
-                            int64_t tsmu = time_delta_mu(self->stats->timed_events.ts_init, tspoll);
-                            if (tsmu < 0) {
-                                fprintf(stderr, "ERROR  chnhandler non-monotonic clock\n");
-                                return -1;
-                            }
-                            tsmu += 2000000;
-                            ec = bsr_timed_events_add_input_enable(&self->stats->timed_events, self->addr_inp,
-                                                                   (uint64_t)tsmu);
-                            NZRET(ec);
-                            ec = bsr_chnhandler_disable_input(self);
-                            NZRET(ec);
+                    NZRET(ec);
+                    if (self->throttling != 0) {
+                        if (self->msg_dt_ema.ema > 0.0096) {
+                            self->throttling = 0;
                         }
+                    } else if (self->msg_dt_ema.ema < 0.0090) {
+                        self->throttling = 1;
                     }
                 }
                 self->more_last = more;
+            }
+            if (self->throttling != 0) {
+                if (self->input_disabled == 0) {
+                    if (FALSE) {
+                        fprintf(stderr,
+                                "TRACE  timed_events source too fast:  %s  dt %.4f ± %.4f  updates %" PRIu64 "\n",
+                                self->addr_inp, self->msg_dt_ema.ema, sqrtf(self->msg_dt_ema.emv),
+                                self->msg_dt_ema.update_count);
+                    }
+                    if (TRUE) {
+                        self->throttling_enable_count += 1;
+                        int64_t tsmu_i = time_delta_mu(self->stats->timed_events.ts_init, tspoll);
+                        if (tsmu_i < 0) {
+                            fprintf(stderr, "ERROR  chnhandler non-monotonic clock\n");
+                            return -1;
+                        }
+                        uint64_t tsmu = tsmu_i;
+                        tsmu += (uint64_t)((0.0099 - self->msg_dt_ema.ema) * 1e6);
+                        ec = bsr_timed_events_add_input_enable(&self->stats->timed_events, self->addr_inp,
+                                                               (uint64_t)tsmu);
+                        NZRET(ec);
+                        ec = bsr_chnhandler_disable_input(self);
+                        NZRET(ec);
+                    }
+                }
+                do_recv = 0;
             }
         }
     } else {

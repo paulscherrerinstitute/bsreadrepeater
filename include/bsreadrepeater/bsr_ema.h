@@ -7,6 +7,7 @@ struct bsr_ema {
     float k;
     float ema;
     float emv;
+    uint64_t update_count;
 };
 
 ERRT bsr_ema_init(struct bsr_ema *self);

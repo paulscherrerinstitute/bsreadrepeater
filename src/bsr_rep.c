@@ -238,7 +238,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         struct timespec ts1;
         struct timespec ts2;
         clock_gettime(CLOCK_MONOTONIC, &ts1);
-        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 500);
+        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 10);
         if (FALSE) {
             fprintf(stderr, "TRACE  poll nev %d\n", nev);
         }
@@ -307,24 +307,29 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         if (bsr_statistics_ms_since_last_print(&self->stats) > GLOBAL_STATS_PRINT_DT_MS) {
             bsr_statistics_print_now(&self->stats);
         }
-        if (TRUE) {
+        while (TRUE) {
             uint64_t *key;
             struct timed_event *ev;
-            bsr_timed_events_most_recent_key(&self->stats.timed_events, &key, &ev);
-            if (ev != NULL) {
-                // TODO move that into the time events scope:
-                gboolean removed = g_tree_remove(self->stats.timed_events.tree, key);
-                if (removed != TRUE) {
-                    fprintf(stderr, "ERROR  timed_events  unable to remove existing key\n");
-                }
+            bsr_timed_events_most_recent_key(&self->stats.timed_events, ts3, &key, &ev);
+            if (ev == NULL) {
+                break;
+            } else {
                 struct Handler *h2 = handler_list_find_by_input_addr_2(&handler_list, ev->addr);
-                // TODO factor this better:
-                free(key);
-                free(ev);
+                {
+                    // TODO move the removal into the timed events scope and refactor:
+                    gboolean removed = g_tree_remove(self->stats.timed_events.tree, key);
+                    if (removed != TRUE) {
+                        fprintf(stderr, "ERROR  timed_events  unable to remove existing key\n");
+                    }
+                    free(key);
+                    free(ev);
+                }
                 if (h2 != NULL) {
                     if (h2->kind == SourceHandler) {
                         struct bsr_chnhandler *h3 = &h2->handler.src;
-                        fprintf(stderr, "INFO  enable %s\n", h3->addr_inp);
+                        if (FALSE) {
+                            fprintf(stderr, "TRACE  enable %s\n", h3->addr_inp);
+                        }
                         bsr_chnhandler_enable_input(h3);
                     } else {
                         fprintf(stderr, "ERROR  timed_events  found handler is not a source handler\n");

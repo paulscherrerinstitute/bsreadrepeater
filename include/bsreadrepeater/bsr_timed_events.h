@@ -20,4 +20,5 @@ struct bsr_timed_events {
 
 ERRT bsr_timed_events_init(struct bsr_timed_events *self);
 ERRT bsr_timed_events_add_input_enable(struct bsr_timed_events *self, char const *addr, uint64_t tsmu);
-ERRT bsr_timed_events_most_recent_key(struct bsr_timed_events *self, uint64_t **retkey, struct timed_event **ret);
+ERRT bsr_timed_events_most_recent_key(struct bsr_timed_events *self, struct timespec tsnow, uint64_t **retkey,
+                                      struct timed_event **ret);
