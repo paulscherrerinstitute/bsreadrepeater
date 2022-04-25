@@ -369,10 +369,13 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 str = g_string_append(str, s);
                             }
                             {
+                                // TODO make a method for this kind of access: get_and_reset or something.
                                 float ema = h->msg_emit_age.ema;
                                 float emv = h->msg_emit_age.emv;
                                 float min = h->msg_emit_age.min;
                                 float max = h->msg_emit_age.max;
+                                h->msg_emit_age.min = INFINITY;
+                                h->msg_emit_age.max = -INFINITY;
                                 snprintf(s, sizeof(s), "msg_emit_age  %.4f  %.4f  %.4f  %.4f\n", ema, sqrtf(emv), min,
                                          max);
                                 str = g_string_append(str, s);
