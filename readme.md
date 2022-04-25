@@ -7,7 +7,7 @@ Input sources and output sockets can be added and removed at runtime.
 
 # Project Goals
 
-✓ Low, stable and predictable memory and cpu usage.
+✓ Stable and predictable memory and cpu usage.
 
 ✓ Tested under Valgrind with real bsread sources.
 
@@ -17,7 +17,7 @@ Input sources and output sockets can be added and removed at runtime.
 
 ✓ Parse bsread json headers and maintain event rate moving averages per channel.
 
-• Block sources with too high event rate (free-running sources) and re-enable periodically.
+✓ Block sources with too high event rate (free-running sources) and re-enable periodically.
 
 • Block sources with bsread protocol errors.
 

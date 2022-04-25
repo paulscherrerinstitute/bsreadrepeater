@@ -1,4 +1,5 @@
 #include <bsr_ema.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +28,8 @@ ERRT bsr_ema_ext_init(struct bsr_ema_ext *self) {
     self->k = 0.05;
     self->ema = 0;
     self->emv = 0;
-    self->min = +1e10;
-    self->max = -1e10;
+    self->min = INFINITY;
+    self->max = -INFINITY;
     self->update_count = 0;
     return 0;
 }

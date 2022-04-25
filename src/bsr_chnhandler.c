@@ -481,6 +481,17 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         ec = zmq_msg_copy(&msgout, &msgin);
                         ZMQ_NEGONERET(ec);
                         int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
+                        if (more == 0) {
+                            // Track the age at the moment when we hand off to libzmq
+                            // in all cases, even when our attempted hand-off failed.
+                            struct timespec time;
+                            clock_gettime(CLOCK_REALTIME, &time);
+                            int64_t ts2 = ((int64_t)(time.tv_sec * 1000000)) + ((int64_t)(time.tv_nsec / 1000));
+                            int64_t ts1 = (int64_t)(self->ts_main_header_last / 1000);
+                            int64_t dt = ts2 - ts1;
+                            float age = ((float)dt) * 1e-6;
+                            bsr_ema_ext_update(&self->msg_emit_age, age);
+                        }
                         if (n2 == -1) {
                             if (errno == EAGAIN) {
                                 // Output can't keep up. Drop message.
@@ -512,14 +523,6 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                                 so->in_multipart = 1;
                             } else {
                                 so->in_multipart = 0;
-                                {
-                                    struct timespec time;
-                                    clock_gettime(CLOCK_REALTIME, &time);
-                                    int64_t ts = ((int64_t)(time.tv_sec * 1000000)) + ((int64_t)(time.tv_nsec / 1000));
-                                    int64_t dt = ts - ((int64_t)(self->ts_main_header_last / 1000));
-                                    float age = ((float)dt) * 1e-6;
-                                    bsr_ema_ext_update(&self->msg_emit_age, age);
-                                }
                             }
                         }
                         it = it->next;
