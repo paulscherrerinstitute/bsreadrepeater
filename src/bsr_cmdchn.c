@@ -368,6 +368,15 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 snprintf(s, sizeof(s), "msg_dt_ema  %.4f  %.4f\n", ema, sqrtf(emv));
                                 str = g_string_append(str, s);
                             }
+                            {
+                                float ema = h->msg_emit_age.ema;
+                                float emv = h->msg_emit_age.emv;
+                                float min = h->msg_emit_age.min;
+                                float max = h->msg_emit_age.max;
+                                snprintf(s, sizeof(s), "msg_emit_age  %.4f  %.4f  %.4f  %.4f\n", ema, sqrtf(emv), min,
+                                         max);
+                                str = g_string_append(str, s);
+                            }
                             str = g_string_append(str, "+++++  channel map begin\n");
                             channel_map_str(h->chnmap, &str);
                             str = g_string_append(str, "-----  channel map end\n");

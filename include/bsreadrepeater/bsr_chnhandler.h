@@ -44,6 +44,7 @@ struct bsr_chnhandler {
     struct channel_map *chnmap;
     struct bsread_main_header *bsread_main_header;
     struct timespec ts_recv_last;
+    uint64_t ts_main_header_last;
     uint64_t received;
     uint64_t mhparsed;
     uint64_t dhparsed;
@@ -63,6 +64,7 @@ struct bsr_chnhandler {
     struct bsr_statistics *stats;
     struct bsr_ema mpmsglen_ema;
     struct bsr_ema msg_dt_ema;
+    struct bsr_ema_ext msg_emit_age;
     struct timespec ts_final_part_last;
     char input_disabled;
     char throttling;

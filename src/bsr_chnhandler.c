@@ -138,6 +138,8 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     NZRET(ec);
     ec = bsr_ema_init(&self->msg_dt_ema);
     NZRET(ec);
+    ec = bsr_ema_ext_init(&self->msg_emit_age);
+    NZRET(ec);
     self->msg_dt_ema.k = 0.02;
     self->msg_dt_ema.ema = 0.8;
     clock_gettime(CLOCK_MONOTONIC, &self->ts_final_part_last);
@@ -155,6 +157,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->bsread_main_header->pulse = 0;
     self->bsread_main_header->timestamp = 0;
     g_array_set_clear_func(self->channels, clear_channel_element);
+    self->ts_main_header_last = 0;
     return 0;
 }
 
@@ -373,6 +376,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     } else {
                         self->mhparsed += 1;
                         self->dh_compr = header->compr;
+                        self->ts_main_header_last = header->timestamp;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
                             fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
                                     self->addr_inp, self->mpmsgc, self->mpc, header->compr, log->str);
@@ -508,6 +512,14 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                                 so->in_multipart = 1;
                             } else {
                                 so->in_multipart = 0;
+                                {
+                                    struct timespec time;
+                                    clock_gettime(CLOCK_REALTIME, &time);
+                                    int64_t ts = ((int64_t)(time.tv_sec * 1000000)) + ((int64_t)(time.tv_nsec / 1000));
+                                    int64_t dt = ts - ((int64_t)(self->ts_main_header_last / 1000));
+                                    float age = ((float)dt) * 1e-6;
+                                    bsr_ema_ext_update(&self->msg_emit_age, age);
+                                }
                             }
                         }
                         it = it->next;

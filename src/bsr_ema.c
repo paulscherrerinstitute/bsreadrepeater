@@ -22,3 +22,28 @@ ERRT bsr_ema_update(struct bsr_ema *self, float v) {
     }
     return 0;
 }
+
+ERRT bsr_ema_ext_init(struct bsr_ema_ext *self) {
+    self->k = 0.05;
+    self->ema = 0;
+    self->emv = 0;
+    self->min = +1e10;
+    self->max = -1e10;
+    self->update_count = 0;
+    return 0;
+}
+
+ERRT bsr_ema_ext_update(struct bsr_ema_ext *self, float v) {
+    self->update_count += 1;
+    float k = self->k;
+    float dv = v - self->ema;
+    self->ema += k * dv;
+    self->emv = (1 - k) * (self->emv + k * dv * dv);
+    if (v < self->min) {
+        self->min = v;
+    }
+    if (v > self->max) {
+        self->max = v;
+    }
+    return 0;
+}
