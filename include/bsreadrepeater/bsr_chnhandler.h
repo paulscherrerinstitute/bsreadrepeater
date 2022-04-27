@@ -1,6 +1,7 @@
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_ema.h>
+#include <bsr_pod.h>
 #include <bsr_poller.h>
 #include <err.h>
 #include <glib.h>
@@ -43,6 +44,7 @@ struct bsr_chnhandler {
     GArray *channels;
     struct channel_map *chnmap;
     struct bsread_main_header *bsread_main_header;
+    struct bsread_data_header data_header;
     struct timespec ts_recv_last;
     uint64_t ts_main_header_last;
     uint64_t received;
@@ -60,6 +62,8 @@ struct bsr_chnhandler {
     uint64_t data_header_bslz4_count;
     uint64_t input_reopened;
     uint64_t throttling_enable_count;
+    uint64_t timestamp_out_of_range_count;
+    uint64_t unexpected_frames_count;
     // Shared, no need to clean up:
     struct bsr_statistics *stats;
     struct bsr_ema mpmsglen_ema;
@@ -68,6 +72,7 @@ struct bsr_chnhandler {
     struct timespec ts_final_part_last;
     char input_disabled;
     char throttling;
+    char block_current_mpm;
 };
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
@@ -77,7 +82,8 @@ ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_enable_input(struct bsr_chnhandler *self);
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll);
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll,
+                                 struct timespec ts_rt_poll_done);
 ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr, int sndhwm, int sndbuf);
 ERRT bsr_chnhandler_remove_out(struct bsr_chnhandler *self, char *addr);
 int bsr_chnhandler_outputs_count(struct bsr_chnhandler *self);

@@ -5,6 +5,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 */
 
 #pragma once
+#include <bsr_pod.h>
 #include <err.h>
 #include <glib.h>
 #include <stdint.h>
@@ -19,10 +20,6 @@ struct bsread_main_header {
     int compr;
     uint64_t pulse;
     uint64_t timestamp;
-};
-
-struct bsread_data_header {
-    int compr;
 };
 
 ERRT json_parse_main_header(char const *str, int n, struct bsread_main_header *header, GString **log);

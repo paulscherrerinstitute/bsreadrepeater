@@ -356,6 +356,11 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             str = g_string_append(str, s);
                             snprintf(s, sizeof(s), "throttling_enable_count %" PRIu64 "\n", h->throttling_enable_count);
                             str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "timestamp_out_of_range_count %" PRIu64 "\n",
+                                     h->timestamp_out_of_range_count);
+                            str = g_string_append(str, s);
+                            snprintf(s, sizeof(s), "unexpected_frames_count %" PRIu64 "\n", h->unexpected_frames_count);
+                            str = g_string_append(str, s);
                             {
                                 float ema = h->mpmsglen_ema.ema;
                                 float emv = h->mpmsglen_ema.emv;
@@ -612,7 +617,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
 }
 
 ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *poller, struct ReceivedCommand *cmd,
-                         struct timespec tspoll) {
+                         struct timespec tspoll, struct timespec ts_rt_poll_done) {
     int ec;
     if (0) {
         fprintf(stderr, "handlers_handle_msg  kind %d  self %p\n", self->kind, (void *)self);
@@ -625,7 +630,7 @@ ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *
         break;
     }
     case SourceHandler: {
-        ec = bsr_chnhandler_handle_event(&self->handler.src, events, tspoll);
+        ec = bsr_chnhandler_handle_event(&self->handler.src, events, tspoll, ts_rt_poll_done);
         NZRET(ec);
         break;
     }

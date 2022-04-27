@@ -236,14 +236,16 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             }
         }
         struct timespec ts1;
-        struct timespec ts2;
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 10);
         if (FALSE) {
             fprintf(stderr, "TRACE  poll nev %d\n", nev);
         }
         self->polls_count += 1;
+        struct timespec ts2;
         clock_gettime(CLOCK_MONOTONIC, &ts2);
+        struct timespec ts_rt_poll_done;
+        clock_gettime(CLOCK_REALTIME, &ts_rt_poll_done);
         {
             struct bsr_statistics *stats = &self->stats;
             float const k = 0.05f;
@@ -270,7 +272,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             zmq_poller_event_t *ev = evs + i;
             if (ev->user_data != NULL) {
                 struct ReceivedCommand cmd = {0};
-                ec = handlers_handle_msg(ev->user_data, ev->events, &poller, &cmd, ts2);
+                ec = handlers_handle_msg(ev->user_data, ev->events, &poller, &cmd, ts2, ts_rt_poll_done);
                 if (ec != 0) {
                     fprintf(stderr, "handle via user-data GOT %d\n", ec);
                 }

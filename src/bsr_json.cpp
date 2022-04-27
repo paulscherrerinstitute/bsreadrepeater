@@ -159,6 +159,7 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
 
 extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
                                        struct channel_map *chnmap, struct bsread_main_header *mh, GString **log) {
+    header->channel_count = 0;
     rapidjson::Document doc;
     try {
         doc.Parse(str, n);
@@ -185,6 +186,7 @@ extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_dat
                     if (obj.HasMember("name")) {
                         auto const &n = obj["name"];
                         if (n.IsString()) {
+                            header->channel_count += 1;
                             if (chnmap->map.contains(n.GetString())) {
                                 auto &e = chnmap->map[n.GetString()];
                                 float dt = (float)(now - e.ts_last_event);
@@ -195,6 +197,7 @@ extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_dat
                                 e.bsread_last_pulse = mh->pulse;
                             } else {
                                 struct channel_info cin(now);
+                                cin.ts_last_event = now;
                                 cin.dhcount = 1;
                                 cin.bsread_last_timestamp = mh->timestamp;
                                 cin.bsread_last_pulse = mh->pulse;

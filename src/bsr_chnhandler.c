@@ -130,8 +130,11 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->data_header_bslz4_count = 0;
     self->input_reopened = 0;
     self->throttling_enable_count = 0;
+    self->timestamp_out_of_range_count = 0;
+    self->unexpected_frames_count = 0;
     self->input_disabled = 0;
     self->throttling = 0;
+    self->block_current_mpm = 0;
     self->stats = stats;
     self->socks_out = NULL;
     ec = bsr_ema_init(&self->mpmsglen_ema);
@@ -156,6 +159,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->bsread_main_header->compr = 0;
     self->bsread_main_header->pulse = 0;
     self->bsread_main_header->timestamp = 0;
+    self->data_header.channel_count = 0;
     g_array_set_clear_func(self->channels, clear_channel_element);
     self->ts_main_header_last = 0;
     return 0;
@@ -301,9 +305,9 @@ void cleanup_gstring(GString **k) {
     }
 }
 
-ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll) {
+ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll,
+                                 struct timespec ts_rt_poll_done) {
     int ec;
-    uint64_t now = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
     if (self->state == RECV) {
         if ((events & ZMQ_POLLIN) == 0) {
             fprintf(stderr, "ERROR  RECV but not POLLIN\n");
@@ -374,12 +378,24 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                                     self->addr_inp, self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
                         }
                     } else {
-                        self->mhparsed += 1;
-                        self->dh_compr = header->compr;
-                        self->ts_main_header_last = header->timestamp;
                         if (FALSE && (self->mpmsgc % 300) == 0) {
                             fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
                                     self->addr_inp, self->mpmsgc, self->mpc, header->compr, log->str);
+                        }
+                        self->mhparsed += 1;
+                        self->dh_compr = header->compr;
+                        self->ts_main_header_last = header->timestamp;
+                        {
+                            int64_t ts1 =
+                                (int64_t)ts_rt_poll_done.tv_sec * 1000000 + (int64_t)ts_rt_poll_done.tv_nsec / 1000;
+                            int64_t ts2 = header->timestamp / 1000;
+                            int64_t dt = ts2 - ts1;
+                            if (dt < -1000000 || dt > 1000000) {
+                                self->timestamp_out_of_range_count += 1;
+                                if (FALSE) {
+                                    self->block_current_mpm = 1;
+                                }
+                            }
                         }
                     }
                 }
@@ -454,8 +470,9 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         self->last_remember_channels = tspoll;
                         chnmap = self->chnmap;
                     }
-                    struct bsread_data_header header = {0};
-                    ec = json_parse_data_header(jsstr, jslen, &header, now, chnmap, self->bsread_main_header, &log);
+                    uint64_t tspoll_mu = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
+                    ec = json_parse_data_header(jsstr, jslen, &self->data_header, tspoll_mu, chnmap,
+                                                self->bsread_main_header, &log);
                     if (ec != 0) {
                         self->json_parse_errors += 1;
                         if (self->json_parse_errors < 10) {
@@ -471,7 +488,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         }
                     }
                 }
-                if (self->mpmsgc > 0) {
+                if (self->mpmsgc > 0 && self->block_current_mpm == 0) {
                     GList *it = self->socks_out;
                     while (it != NULL) {
                         struct sockout *so = it->data;
@@ -529,6 +546,12 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     }
                 }
                 if (more == 0) {
+                    {
+                        if ((uint32_t)self->mpc != 1 + 2 * self->data_header.channel_count) {
+                            self->unexpected_frames_count += 1;
+                        }
+                    }
+                    self->block_current_mpm = 0;
                     self->mpmsgc += 1;
                     ec = bsr_ema_update(&self->mpmsglen_ema, (float)self->mpmsglen);
                     NZRET(ec);

@@ -90,4 +90,4 @@ int bsr_cmdchn_init(struct bsr_cmdchn *self, struct bsr_poller *poller, void *us
 int bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller, struct ReceivedCommand *cmd);
 
 ERRT handlers_handle_msg(struct Handler *self, short events, struct bsr_poller *poller, struct ReceivedCommand *cmd,
-                         struct timespec tspoll);
+                         struct timespec tspoll, struct timespec ts_rt_poll_done);
