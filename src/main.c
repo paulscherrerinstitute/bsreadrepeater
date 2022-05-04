@@ -19,7 +19,7 @@
 #include <unistd.h>
 #include <zmq.h>
 
-char const *const BSREP_VERSION = "0.4.0-aa.0";
+char const *const BSREP_VERSION = "0.4.0";
 
 int main_inner(int const argc, char const *const *argv) {
     int ec;

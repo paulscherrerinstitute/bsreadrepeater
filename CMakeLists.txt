@@ -13,4 +13,6 @@ message("ZeroMQ ${ZeroMQ}")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(glib2pkg REQUIRED IMPORTED_TARGET glib-2.0)
 
+set(CMAKE_BUILD_RPATH "$ORIGIN")
+
 add_subdirectory(src)
