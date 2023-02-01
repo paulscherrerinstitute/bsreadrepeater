@@ -10,6 +10,12 @@ typedef int ERRT;
 
 // Helpers to return on error.
 
+#define EMSG(ec, msg)                                                                                                  \
+    if ((ec) == -1) {                                                                                                  \
+        fprintf(stderr, "%s %d %s\n", msg, errno, strerror(errno));                                                    \
+        return ec;                                                                                                     \
+    }
+
 #define NZRET(ec)                                                                                                      \
     if ((ec) != 0) {                                                                                                   \
         return ec;                                                                                                     \

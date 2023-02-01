@@ -24,5 +24,6 @@ struct bsr_statistics {
 };
 
 ERRT bsr_statistics_init(struct bsr_statistics *self);
+ERRT bsr_statistics_cleanup(struct bsr_statistics *self);
 uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self);
 ERRT bsr_statistics_print_now(struct bsr_statistics *self);

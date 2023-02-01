@@ -46,6 +46,8 @@ ERRT cleanup_bsrep(struct bsrep *self) {
         free(self->startup_file);
         self->startup_file = NULL;
     }
+    ec = bsr_statistics_cleanup(&self->stats);
+    EMSG(ec, "bsr_statistics_cleanup");
     return 0;
 }
 
@@ -159,7 +161,6 @@ static ERRT idle_source_check(struct bsrep *self, struct HandlerList *handler_li
 static ERRT bsrep_run_inner(struct bsrep *self) {
     int ec;
 
-    // TODO add cleanup:
     ec = bsr_statistics_init(&self->stats);
     NZRET(ec);
 
@@ -346,11 +347,11 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
     return 0;
 }
 
-static void *bsrep_run_inner_thr(void *selfptr) {
-    struct bsrep *self = selfptr;
+static void *bsrep_run_inner_thr(void *selfvoid) {
+    struct bsrep *self = selfvoid;
     int ec = bsrep_run_inner(self);
     self->thrret = ec;
-    return selfptr;
+    return selfvoid;
 }
 
 ERRT bsrep_start(struct bsrep *self) {
