@@ -7,6 +7,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #pragma once
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_chnhandler.h>
+#include <bsr_dummy_source_s.h>
 #include <bsr_memreq.h>
 #include <bsr_poller.h>
 #include <bsr_startupcmd.h>
@@ -41,6 +42,7 @@ enum HandlerKind {
     SourceHandler = 2,
     StartupHandler = 3,
     MemReqHandler = 4,
+    DummySourceHandler = 5,
 };
 
 union HandlerUnion {
@@ -48,6 +50,7 @@ union HandlerUnion {
     struct bsr_chnhandler src;
     struct bsr_startupcmd start;
     struct bsr_memreq memreq;
+    struct bsr_dummy_source dummy_source;
 };
 
 struct Handler {

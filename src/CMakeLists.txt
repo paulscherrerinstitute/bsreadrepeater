@@ -30,6 +30,9 @@ bsr_json.cpp
 bsr_json_commands.cpp
 ../include/bsreadrepeater/bsr_timed_events.h
 bsr_timed_events.c
+../include/bsreadrepeater/bsr_dummy_source_s.h
+../include/bsreadrepeater/bsr_dummy_source.h
+bsr_dummy_source.c
 ./bitshuffle/lz4.c
 ./bitshuffle/lz4.h
 ./bitshuffle/iochain.c

@@ -29,6 +29,7 @@ enum bsr_json_command_kind {
     REMOVE_SOURCE,
     ADD_OUTPUT,
     EXIT,
+    DUMMY_SOURCE_START,
 };
 
 union bsr_json_command_union {

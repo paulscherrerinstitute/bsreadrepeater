@@ -58,12 +58,14 @@ ERRT bsrep_init(struct bsrep *self, char const *cmd_addr, char *startup_file) {
         return 1;
     }
     self->cmd_addr = malloc(MAXSTR);
+    NULLRET(self->cmd_addr);
     strncpy(self->cmd_addr, cmd_addr, MAXSTR);
     if (startup_file != NULL) {
-        if (strnlen(startup_file, MAXSTR) >= MAXSTR) {
+        if (strlen(startup_file) >= MAXSTR) {
             return 1;
         }
         self->startup_file = malloc(MAXSTR);
+        NULLRET(self->startup_file);
         strncpy(self->startup_file, startup_file, MAXSTR);
     }
     return 0;
@@ -182,6 +184,9 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
     struct bsr_poller poller __attribute__((cleanup(cleanup_bsr_poller))) = {0};
     poller.ctx = ctx;
     poller.poller = zmq_poller_new();
+    NULLRET(poller.poller);
+    poller.timer_poller = zmq_timers_new();
+    NULLRET(poller.timer_poller);
 
     struct HandlerList handler_list __attribute((cleanup(cleanup_struct_HandlerList))) = {0};
     ec = handler_list_init(&handler_list);
@@ -238,7 +243,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         }
         struct timespec ts1;
         clock_gettime(CLOCK_MONOTONIC, &ts1);
-        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 10);
+        int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 20);
         if (FALSE) {
             fprintf(stderr, "TRACE  poll nev %d\n", nev);
         }
@@ -258,6 +263,10 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
                 fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats->poll_wait_ema,
                         sqrtf(stats->poll_wait_emv));
             }
+        }
+        if (zmq_timers_timeout(poller.timer_poller) <= 0) {
+            ec = zmq_timers_execute(poller.timer_poller);
+            EMSG(ec, "zmq_timers_execute");
         }
         if (nev == -1) {
             if (errno == EAGAIN) {

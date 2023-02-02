@@ -63,6 +63,8 @@ static ERRT extract_command(rapidjson::Document &doc, struct bsr_json_command *c
                 }
             } else if (string("remove-source") == kind_str) {
             } else if (string("exit") == kind_str) {
+            } else if (string("dummy-source-start") == kind_str) {
+                cmd->kind = DUMMY_SOURCE_START;
             } else {
                 return -1;
             }

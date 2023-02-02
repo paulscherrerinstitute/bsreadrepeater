@@ -12,6 +12,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 struct bsr_poller {
     void *poller;
     void *ctx;
+    void *timer_poller;
 };
 
 void cleanup_bsr_poller(struct bsr_poller *k);

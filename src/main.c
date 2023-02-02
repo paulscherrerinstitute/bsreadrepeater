@@ -23,23 +23,20 @@ char const *const BSREP_VERSION = "0.4.0";
 
 int main_inner(int const argc, char const *const *argv) {
     int ec;
-    int const cmd_addr_max = 64;
-    char cmd_addr[cmd_addr_max];
-    strncpy(cmd_addr, "tcp://127.0.0.1:4242", cmd_addr_max);
+    char cmd_addr[128] = {0};
+    strncpy(cmd_addr, "tcp://127.0.0.1:4242", sizeof(cmd_addr) - 1);
     if (argc < 2) {
         fprintf(stderr, "Usage: bsrep <COMMAND_SOCKET_ADDRESS> [STARTUP_COMMAND_FILE]\n\n");
         return 0;
     }
     if (argc >= 2) {
-        strncpy(cmd_addr, argv[1], cmd_addr_max);
-        cmd_addr[cmd_addr_max - 1] = 0;
+        strncpy(cmd_addr, argv[1], sizeof(cmd_addr) - 1);
     }
     fprintf(stderr, "Command socket address: %s\n", cmd_addr);
 
-    char *startup_file = NULL;
+    char startup_file[256] = {0};
     if (argc >= 3) {
-        startup_file = malloc(strlen(argv[2]));
-        strcpy(startup_file, argv[2]);
+        strncpy(startup_file, argv[2], sizeof(startup_file) - 1);
         fprintf(stderr, "Read startup commands from: %s\n", startup_file);
     }
 

@@ -1,4 +1,5 @@
 #include <bsr_cmdchn.h>
+#include <bsr_dummy_source.h>
 #include <bsr_json.h>
 #include <bsr_json_commands.h>
 #include <bsr_stats.h>
@@ -170,9 +171,7 @@ ERRT handler_list_remove(struct HandlerList *self, struct Handler *handler) {
     return 0;
 }
 
-struct Handler *handler_list_get_data(GList *p) {
-    return (struct Handler *)p->data;
-}
+struct Handler *handler_list_get_data(GList *p) { return (struct Handler *)p->data; }
 
 struct bsr_chnhandler *handler_list_find_by_input_addr(struct HandlerList *self, char const *addr) {
     GList *it = self->list;
@@ -280,6 +279,21 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 if (ec != 0) {
                                     fprintf(stderr, "ERROR could not add output\n");
                                 }
+                            }
+                        } else if (cmd.kind == DUMMY_SOURCE_START) {
+                            struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
+                            handler = malloc(sizeof(struct Handler));
+                            NULLRET(handler);
+                            handler->kind = DummySourceHandler;
+                            struct bsr_dummy_source *dummy = &handler->handler.dummy_source;
+                            fprintf(stderr, "DO INIT\n");
+                            ec = dummy_source_init(dummy, poller);
+                            if (ec != 0) {
+                                fprintf(stderr, "ERROR can not initialize DummySourceHandler\n");
+                            } else {
+                                ec = handler_list_add(self->handler_list, handler);
+                                NZRET(ec);
+                                handler = NULL;
                             }
                         }
                         char const *rep = "received json command";
