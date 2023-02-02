@@ -22,8 +22,17 @@ static gint ts_compare(gconstpointer a, gconstpointer b) {
 
 ERRT bsr_timed_events_init(struct bsr_timed_events *self) {
     // TODO check for failed new?
+    self->tree = NULL;
     self->tree = g_tree_new(ts_compare);
     clock_gettime(CLOCK_MONOTONIC, &self->ts_init);
+    return 0;
+}
+
+ERRT bsr_timed_events_cleanup(struct bsr_timed_events *self) {
+    if (self->tree != NULL) {
+        g_tree_destroy(self->tree);
+        self->tree = NULL;
+    }
     return 0;
 }
 

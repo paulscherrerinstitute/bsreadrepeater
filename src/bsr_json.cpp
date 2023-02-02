@@ -104,51 +104,79 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
     using rapidjson::Value;
     rapidjson::Document doc;
     try {
+        header->timestamp = 0;
+        header->pulse = 0;
+        header->compr = 0;
         doc.Parse(str, n);
         if (doc.HasParseError()) {
             return 1;
         }
-        if (!doc.HasMember("htype")) {
+        if (!doc.IsObject()) {
             return 2;
         }
-        if (!doc["htype"].IsString()) {
+        Value::ConstMemberIterator mit;
+        mit = doc.FindMember("htype");
+        if (mit == doc.MemberEnd()) {
+            return 2;
+        }
+        if (!mit->value.IsString()) {
             return 3;
         }
-        if (strcmp("bsr_m-1.1", doc["htype"].GetString()) != 0) {
+        if (strcmp("bsr_m-1.1", mit->value.GetString()) != 0) {
             return 4;
         }
-        if (!doc["pulse_id"].IsUint64()) {
+        mit = doc.FindMember("pulse_id");
+        if (mit == doc.MemberEnd()) {
+            return 2;
+        }
+        if (!mit->value.IsUint64()) {
             return 5;
         }
-        header->pulse = doc["pulse_id"].GetUint64();
-        if (doc["global_timestamp"].IsObject()) {
-            auto const &o = doc["global_timestamp"];
-            header->timestamp = o["sec"].GetUint64() * 1000000000 + o["ns"].GetUint64();
-            if (FALSE && printc < 20) {
-                printc += 1;
-                fprintf(stderr, "pulse %" PRIu64 "  ts  sec %" PRIu64 "  ns %" PRIu64 "\n", doc["pulse_id"].GetUint64(),
-                        o["sec"].GetUint64(), o["ns"].GetUint64());
-            }
-        } else {
-            header->timestamp = 0;
+        header->pulse = mit->value.GetUint64();
+        mit = doc.FindMember("global_timestamp");
+        if (mit == doc.MemberEnd()) {
+            return 2;
         }
-        if (!doc["dh_compression"].IsNull() && !doc["dh_compression"].IsString()) {
+        if (!mit->value.IsObject()) {
+            return 5;
+        }
+        auto const &gt = mit->value.GetObject();
+        mit = gt.FindMember("sec");
+        if (mit == doc.MemberEnd()) {
             return 6;
         }
-        if (doc["dh_compression"].IsString()) {
-            char const *c = doc["dh_compression"].GetString();
-            if (strcmp("none", c) == 0) {
-                header->compr = 0;
-            } else if (strcmp("bitshuffle_lz4", c) == 0) {
-                header->compr = 1;
-            } else if (strcmp("lz4", c) == 0) {
-                header->compr = 2;
-            } else {
-                fprintf(stderr, "WARN compression algo: %s\n", c);
-                return 7;
+        if (!mit->value.IsUint64()) {
+            return 6;
+        }
+        uint64_t ts_sec = mit->value.GetUint64();
+        mit = gt.FindMember("ns");
+        if (mit == doc.MemberEnd()) {
+            return 6;
+        }
+        if (!mit->value.IsUint64()) {
+            return 6;
+        }
+        uint64_t ts_ns = mit->value.GetUint64();
+        header->timestamp = ts_sec * 1000000000 + ts_ns;
+        mit = doc.FindMember("dh_compression");
+        if (mit != doc.MemberEnd()) {
+            if (mit->value.IsString()) {
+                auto const &cs = mit->value.GetString();
+                if (strcmp("none", cs) == 0) {
+                    header->compr = 0;
+                } else if (strcmp("bitshuffle_lz4", cs) == 0) {
+                    header->compr = 1;
+                } else if (strcmp("lz4", cs) == 0) {
+                    header->compr = 2;
+                } else {
+                    fprintf(stderr, "WARN compression algo: %s\n", cs);
+                    return 7;
+                }
             }
-        } else {
-            header->compr = 0;
+        }
+        if (printc < 20) {
+            printc += 1;
+            fprintf(stderr, "%" PRIu64 "\n", header->timestamp);
         }
         return 0;
     } catch (std::exception const &e) {

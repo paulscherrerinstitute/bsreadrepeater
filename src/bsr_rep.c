@@ -59,14 +59,14 @@ ERRT bsrep_init(struct bsrep *self, char const *cmd_addr, char *startup_file) {
     }
     self->cmd_addr = malloc(MAXSTR);
     NULLRET(self->cmd_addr);
-    strncpy(self->cmd_addr, cmd_addr, MAXSTR);
+    strncpy(self->cmd_addr, cmd_addr, MAXSTR - 1);
     if (startup_file != NULL) {
         if (strlen(startup_file) >= MAXSTR) {
             return 1;
         }
         self->startup_file = malloc(MAXSTR);
         NULLRET(self->startup_file);
-        strncpy(self->startup_file, startup_file, MAXSTR);
+        strncpy(self->startup_file, startup_file, MAXSTR - 1);
     }
     return 0;
 }
@@ -162,6 +162,8 @@ static ERRT idle_source_check(struct bsrep *self, struct HandlerList *handler_li
 
 static ERRT bsrep_run_inner(struct bsrep *self) {
     int ec;
+
+    self->do_polls_max = 300;
 
     ec = bsr_statistics_init(&self->stats);
     NZRET(ec);

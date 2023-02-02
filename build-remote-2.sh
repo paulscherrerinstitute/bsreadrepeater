@@ -6,7 +6,7 @@ if false; then
   tar -xf zeromq-4.3.4.tar.gz
   cd zeromq-4.3.4
   mkdir build
-  cmake3 -S . -B ./build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS:BOOL=OFF -DENABLE_DRAFTS:BOOL=ON
+  cmake3 -S . -B ./build -D CMAKE_BUILD_TYPE=Release -D BUILD_TESTS:BOOL=OFF -D ENABLE_DRAFTS:BOOL=ON
   cmake3 --build ./build
 fi
 
@@ -25,6 +25,6 @@ rm -rf "$D0/build"
 
 mkdir -p ./build
 
-cmake3 -S . -B ./build -DZMQ_BUILD_DIR=$(pwd)/zeromq-4.3.4/build
+cmake3 -S . -B ./build -D ZMQ_BUILD_DIR=$(pwd)/zeromq-4.3.4/build
 
 cmake3 --build ./build

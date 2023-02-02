@@ -375,7 +375,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                         if (self->json_parse_errors < 10) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
                             fprintf(stderr, "WARN  can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
-                                    self->addr_inp, self->mpmsgc, self->mpc, n, 32, buf, hexbuf);
+                                    self->addr_inp, self->mpmsgc, self->mpc, n, n, buf, hexbuf);
                         }
                     } else {
                         if (FALSE && (self->mpmsgc % 300) == 0) {

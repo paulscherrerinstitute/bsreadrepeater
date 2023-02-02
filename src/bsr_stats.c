@@ -19,7 +19,10 @@ ERRT bsr_statistics_init(struct bsr_statistics *self) {
     return 0;
 }
 
-ERRT bsr_statistics_cleanup(struct bsr_statistics *self) { return 0; }
+ERRT bsr_statistics_cleanup(struct bsr_statistics *self) {
+    bsr_timed_events_cleanup(&self->timed_events);
+    return 0;
+}
 
 uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
     struct timespec ts;

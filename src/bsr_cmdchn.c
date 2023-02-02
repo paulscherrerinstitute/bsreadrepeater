@@ -121,6 +121,13 @@ void cleanup_struct_Handler(struct Handler *self) {
             }
             break;
         }
+        case DummySourceHandler: {
+            ec = dummy_source_cleanup(&self->handler.dummy_source);
+            if (ec == -1) {
+                fprintf(stderr, "ERROR cleanup DummySourceHandler\n");
+            }
+            break;
+        }
         default: {
             fprintf(stderr, "ERROR cleanup_struct_Handler unknown kind %d\n", self->kind);
         }
@@ -283,6 +290,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         } else if (cmd.kind == DUMMY_SOURCE_START) {
                             struct Handler *handler __attribute__((cleanup(cleanup_struct_Handler_ptr))) = NULL;
                             handler = malloc(sizeof(struct Handler));
+                            memset(handler, 0, sizeof(*handler));
                             NULLRET(handler);
                             handler->kind = DummySourceHandler;
                             struct bsr_dummy_source *dummy = &handler->handler.dummy_source;
