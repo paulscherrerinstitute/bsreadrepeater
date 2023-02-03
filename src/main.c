@@ -10,7 +10,6 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <glib.h>
 #include <math.h>
 #include <signal.h>
 #include <sys/stat.h>

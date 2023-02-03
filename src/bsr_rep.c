@@ -163,14 +163,14 @@ static ERRT idle_source_check(struct bsrep *self, struct HandlerList *handler_li
 static ERRT bsrep_run_inner(struct bsrep *self) {
     int ec;
 
-    self->do_polls_max = 300;
+    // self->do_polls_max = 300;
 
     ec = bsr_statistics_init(&self->stats);
     NZRET(ec);
 
     void *ctx __attribute__((cleanup(cleanup_zmq_ctx))) = zmq_ctx_new();
     NULLRET(ctx);
-    if (TRUE) {
+    if (FALSE) {
         ec = zmq_ctx_set(ctx, ZMQ_IPV6, 1);
         NZRET(ec);
     }

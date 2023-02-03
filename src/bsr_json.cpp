@@ -7,6 +7,9 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #include <bsr_json.h>
 #include <cmath>
 #include <rapidjson/document.h>
+#include <rapidjson/ostreamwrapper.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 #include <stdio.h>
 #include <string>
 #include <unordered_map>
@@ -101,6 +104,7 @@ extern "C" ERRT json_parse(char const *str, int n, GString **log) {
 }
 
 extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_main_header *header, GString **log) {
+    fprintf(stderr, "json_parse_main_header\n");
     using rapidjson::Value;
     rapidjson::Document doc;
     try {
@@ -187,36 +191,48 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
 
 extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
                                        struct channel_map *chnmap, struct bsread_main_header *mh, GString **log) {
-    header->channel_count = 0;
+    using rapidjson::Value;
     rapidjson::Document doc;
     try {
+        header->channel_count = 0;
         doc.Parse(str, n);
         if (doc.HasParseError()) {
             return 1;
         }
-        if (!doc.HasMember("htype")) {
+        if (!doc.IsObject()) {
+            return 1;
+        }
+        Value::ConstMemberIterator mit;
+        mit = doc.FindMember("htype");
+        if (mit == doc.MemberEnd()) {
             return 2;
         }
-        if (!doc["htype"].IsString()) {
+        if (!mit->value.IsString()) {
+            return 2;
+        }
+        if (strcmp("bsr_d-1.1", mit->value.GetString()) != 0) {
+            return 2;
+        }
+        mit = doc.FindMember("channels");
+        if (mit == doc.MemberEnd()) {
             return 3;
         }
-        if (strcmp("bsr_d-1.1", doc["htype"].GetString()) != 0) {
-            return 4;
+        if (!mit->value.IsArray()) {
+            return 3;
         }
-        if (!doc["channels"].IsArray()) {
-            return 5;
-        }
+        auto const &chans_val = mit->value;
         if (chnmap != NULL) {
-            auto const &a = doc["channels"].GetArray();
+            auto const &a = chans_val.GetArray();
             for (auto it = a.Begin(); it != a.End(); ++it) {
                 if (it->IsObject()) {
                     auto const &obj = it->GetObject();
-                    if (obj.HasMember("name")) {
-                        auto const &n = obj["name"];
-                        if (n.IsString()) {
+                    auto const &name_mem = obj.FindMember("name");
+                    if (name_mem != obj.MemberEnd()) {
+                        if (name_mem->value.IsString()) {
+                            auto const &name = name_mem->value.GetString();
                             header->channel_count += 1;
-                            if (chnmap->map.contains(n.GetString())) {
-                                auto &e = chnmap->map[n.GetString()];
+                            if (chnmap->map.contains(name)) {
+                                auto &e = chnmap->map[name];
                                 float dt = (float)(now - e.ts_last_event);
                                 e.emav.update(dt);
                                 e.ts_last_event = now;
@@ -229,7 +245,7 @@ extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_dat
                                 cin.dhcount = 1;
                                 cin.bsread_last_timestamp = mh->timestamp;
                                 cin.bsread_last_pulse = mh->pulse;
-                                chnmap->map[std::string(n.GetString())] = cin;
+                                chnmap->map[std::string(name)] = cin;
                             }
                         }
                     }
@@ -271,4 +287,51 @@ extern "C" ERRT channel_map_str(struct channel_map *self, GString **out) {
         g_string_append(*out, "\n");
     }
     return 0;
+}
+
+extern "C" ERRT stats_source_to_json(struct stats_source_pub *stats, GString **out) {
+#define MEMU64(name) doc.AddMember(#name, stats->name, doc.GetAllocator());
+#define MEMF32(name)                                                                                                   \
+    if (std::isinf(stats->name) || std::isnan(stats->name)) {                                                          \
+        doc.AddMember(#name, rapidjson::Value(), doc.GetAllocator());                                                  \
+    } else {                                                                                                           \
+        doc.AddMember(#name, stats->name, doc.GetAllocator());                                                         \
+    }
+    rapidjson::Document doc;
+    doc.SetObject();
+    MEMU64(received);
+    MEMU64(mhparsed);
+    MEMU64(dhparsed);
+    MEMU64(json_parse_errors);
+    MEMU64(dhdecompr);
+    MEMU64(sentok);
+    MEMU64(recv_bytes);
+    MEMU64(sent_bytes);
+    MEMU64(bsread_errors);
+    MEMU64(input_reopened);
+    MEMU64(throttling_enable_count);
+    MEMU64(timestamp_out_of_range_count);
+    MEMU64(unexpected_frames_count);
+    MEMF32(mpmsglen_ema);
+    MEMF32(mpmsglen_emv);
+    MEMF32(msg_dt_ema);
+    MEMF32(msg_dt_emv);
+    MEMF32(msg_emit_age_ema);
+    MEMF32(msg_emit_age_emv);
+    MEMF32(msg_emit_age_min);
+    MEMF32(msg_emit_age_max);
+    rapidjson::StringBuffer buf;
+    rapidjson::Writer<rapidjson::StringBuffer, rapidjson::UTF8<char>, rapidjson::UTF8<char>, rapidjson::CrtAllocator, 2>
+        writer(buf, 0);
+    if (!doc.Accept(writer)) {
+        return -1;
+    }
+    writer.Flush();
+    buf.GetString();
+    // int n = write(2, buf.GetString(), buf.GetSize());
+    // fprintf(stderr, "\nstr debug out %d %ld %ld\n", n, buf.GetLength(), buf.GetSize());
+    g_string_append(*out, buf.GetString());
+    return 0;
+#undef MEMU64
+#undef MEMF32
 }

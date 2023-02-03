@@ -1,4 +1,5 @@
 #include <bsr_memreq.h>
+#include <string.h>
 #include <unistd.h>
 
 ERRT cleanup_struct_bsr_memreq(struct bsr_memreq *self) {

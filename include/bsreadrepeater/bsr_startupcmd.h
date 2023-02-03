@@ -8,7 +8,6 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 #define ZMQ_BUILD_DRAFT_API
 #include <bsr_poller.h>
 #include <err.h>
-#include <glib.h>
 #include <zmq.h>
 
 struct bsr_startupcmd {

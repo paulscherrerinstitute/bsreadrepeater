@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.17.3)
 project(bsreadrepeater LANGUAGES C CXX)
 
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -march=sandybridge")

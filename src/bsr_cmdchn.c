@@ -352,64 +352,9 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         if (h2 != NULL) {
                             struct bsr_chnhandler *h = &h2->handler.src;
                             char s[256];
-                            snprintf(s, sizeof(s), "received %" PRIu64 "\n", h->received);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "mhparsed %" PRIu64 "\n", h->mhparsed);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "dhparsed %" PRIu64 "\n", h->dhparsed);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "json_parse_errors %" PRIu64 "\n", h->json_parse_errors);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "dhdecompr %" PRIu64 "\n", h->dhdecompr);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "data_header_lz4_count %" PRIu64 "\n", h->data_header_lz4_count);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "data_header_bslz4_count %" PRIu64 "\n", h->data_header_bslz4_count);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "sentok %" PRIu64 "\n", h->sentok);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "recv_bytes %" PRIu64 "\n", h->recv_bytes);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "sent_bytes %" PRIu64 "\n", h->sent_bytes);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "bsread_errors %" PRIu64 "\n", h->bsread_errors);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "input_reopened %" PRIu64 "\n", h->input_reopened);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "throttling_enable_count %" PRIu64 "\n", h->throttling_enable_count);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "timestamp_out_of_range_count %" PRIu64 "\n",
-                                     h->timestamp_out_of_range_count);
-                            str = g_string_append(str, s);
-                            snprintf(s, sizeof(s), "unexpected_frames_count %" PRIu64 "\n", h->unexpected_frames_count);
-                            str = g_string_append(str, s);
-                            {
-                                float ema = h->mpmsglen_ema.ema;
-                                float emv = h->mpmsglen_ema.emv;
-                                snprintf(s, sizeof(s), "msglen emav (kB)  %.3f  %.3f\n", ema / 1024, sqrtf(emv) / 1024);
-                                str = g_string_append(str, s);
-                            }
-                            {
-                                float ema = h->msg_dt_ema.ema;
-                                float emv = h->msg_dt_ema.emv;
-                                snprintf(s, sizeof(s), "msg_dt_ema  %.4f  %.4f\n", ema, sqrtf(emv));
-                                str = g_string_append(str, s);
-                            }
-                            {
-                                // TODO make a method for this kind of access: get_and_reset or something.
-                                float ema = h->msg_emit_age.ema;
-                                float emv = h->msg_emit_age.emv;
-                                float min = h->msg_emit_age.min;
-                                float max = h->msg_emit_age.max;
-                                h->msg_emit_age.min = INFINITY;
-                                h->msg_emit_age.max = -INFINITY;
-                                snprintf(s, sizeof(s), "msg_emit_age  %.4f  %.4f  %.4f  %.4f\n", ema, sqrtf(emv), min,
-                                         max);
-                                str = g_string_append(str, s);
-                            }
-                            str = g_string_append(str, "+++++  channel map begin\n");
-                            channel_map_str(h->chnmap, &str);
-                            str = g_string_append(str, "-----  channel map end\n");
+                            // str = g_string_append(str, "+++++  channel map begin\n");
+                            // channel_map_str(h->chnmap, &str);
+                            // str = g_string_append(str, "-----  channel map end\n");
                             GList *it2 = h->socks_out;
                             while (it2 != NULL) {
                                 struct sockout *so = it2->data;
@@ -424,6 +369,36 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 snprintf(s, sizeof(s), "    busy mp %" PRIu64 "\n", so->eagain_multipart);
                                 str = g_string_append(str, s);
                                 it2 = it2->next;
+                            }
+                            struct stats_source_pub st = {0};
+                            st.received = h->received;
+                            st.mhparsed = h->mhparsed;
+                            st.dhparsed = h->dhparsed;
+                            st.json_parse_errors = h->json_parse_errors;
+                            st.dhdecompr = h->dhdecompr;
+                            st.data_header_lz4_count = h->data_header_lz4_count;
+                            st.data_header_bslz4_count = h->data_header_bslz4_count;
+                            st.sentok = h->sentok;
+                            st.recv_bytes = h->recv_bytes;
+                            st.sent_bytes = h->sent_bytes;
+                            st.bsread_errors = h->bsread_errors;
+                            {
+                                st.msg_dt_ema = h->msg_dt_ema.ema;
+                                st.msg_dt_emv = h->msg_dt_ema.emv;
+                            }
+                            {
+                                // TODO make a method for this kind of access: get_and_reset or something.
+                                st.msg_emit_age_ema = h->msg_emit_age.ema;
+                                st.msg_emit_age_emv = h->msg_emit_age.emv;
+                                st.msg_emit_age_min = h->msg_emit_age.min;
+                                st.msg_emit_age_max = h->msg_emit_age.max;
+                                h->msg_emit_age.min = INFINITY;
+                                h->msg_emit_age.max = -INFINITY;
+                            }
+                            str = g_string_truncate(str, 0);
+                            ec = stats_source_to_json(&st, &str);
+                            if (ec == -1) {
+                                fprintf(stderr, "stats json encode issue\n");
                             }
                         }
                     }

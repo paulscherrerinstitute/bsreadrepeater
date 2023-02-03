@@ -6,6 +6,7 @@ Authors: Dominik Werder <dominik.werder@gmail.com>
 
 #pragma once
 #include <bsr_pod.h>
+#include <bsr_stats.h>
 #include <err.h>
 #include <glib.h>
 #include <stdint.h>
@@ -32,6 +33,8 @@ void channel_map_release(struct channel_map *self);
 ERRT channel_map_str(struct channel_map *self, GString **out);
 
 uint64_t now_us(void);
+
+ERRT stats_source_to_json(struct stats_source_pub *stats, GString **out);
 
 #ifdef __cplusplus
 }

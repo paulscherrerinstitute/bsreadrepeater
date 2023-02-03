@@ -1,4 +1,5 @@
 #include <bsr_startupcmd.h>
+#include <string.h>
 #include <unistd.h>
 
 size_t const BUFCAP = sizeof(((struct bsr_startupcmd *)NULL)->buf);

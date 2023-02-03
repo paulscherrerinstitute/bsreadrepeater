@@ -37,7 +37,7 @@ ERRT set_basic_sock_opts(void *sock) {
     int linger = 800;
     ec = zmq_setsockopt(sock, ZMQ_LINGER, &linger, sizeof(int));
     NZRET(ec);
-    int ipv6 = 1;
+    int ipv6 = 0;
     ec = zmq_setsockopt(sock, ZMQ_IPV6, &ipv6, sizeof(int));
     NZRET(ec);
     // TODO choose max size depending on (expected) channel types.
