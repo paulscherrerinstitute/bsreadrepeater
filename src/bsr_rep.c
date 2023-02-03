@@ -240,7 +240,6 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         if (self->stop == 1) {
             if (self->polls_count >= self->do_polls_min) {
                 break;
-            } else {
             }
         }
         struct timespec ts1;
@@ -279,6 +278,9 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
                 fprintf(stderr, "Poller error: %s\n", zmq_strerror(errno));
                 return -1;
             }
+        } else if (nev == 0) {
+        } else {
+            fprintf(stderr, "nev %3d\n", nev);
         }
         for (int i = 0; i < nev; i += 1) {
             zmq_poller_event_t *ev = evs + i;

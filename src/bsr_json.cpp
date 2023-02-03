@@ -191,6 +191,7 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
 
 extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
                                        struct channel_map *chnmap, struct bsread_main_header *mh, GString **log) {
+    fprintf(stderr, "json_parse_data_header\n");
     using rapidjson::Value;
     rapidjson::Document doc;
     try {

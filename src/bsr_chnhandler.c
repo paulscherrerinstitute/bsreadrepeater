@@ -333,7 +333,6 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     return -1;
                 }
             } else {
-                fprintf(stderr, "CHNHANDLER RECV %d\n", n);
                 self->ts_recv_last = tspoll;
                 self->recv_bytes += n;
                 self->stats->recv_bytes += n;
@@ -401,7 +400,6 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     }
                 }
                 if (self->mpc == 1) {
-                    fprintf(stderr, "SHOULD EXPECT DATA HEADER\n");
                     char const *mb = (char *)zmq_msg_data(&msgin);
                     char const *jsstr = mb;
                     int jslen = n;

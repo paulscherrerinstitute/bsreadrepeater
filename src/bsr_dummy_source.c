@@ -21,6 +21,13 @@ int try_send_next(struct bsr_dummy_source *self) {
         if (ec == -1) {
             return -1;
         }
+    } else if (ptype == 2) {
+        char const *msg1 = "";
+        fprintf(stderr, "send c\n");
+        ec = zmq_send(self->sock, msg1, strlen(msg1), ZMQ_DONTWAIT);
+        if (ec == -1) {
+            return -1;
+        }
     } else {
         fprintf(stderr, "unknown ptype %d\n", ptype);
     }
@@ -34,7 +41,7 @@ ERRT try_sends(struct bsr_dummy_source *self) {
             return -1;
         } else {
             ptype += 1;
-            if (ptype >= 2) {
+            if (ptype >= 3) {
                 ptype = 0;
                 break;
             }
@@ -53,14 +60,17 @@ ERRT dummy_source_init(struct bsr_dummy_source *self, struct bsr_poller *poller)
     int ec;
     self->poller = poller;
     self->sock = zmq_socket(poller->ctx, ZMQ_PUSH);
-    NULLRET(self->sock);
+    ZMQ_NULLRET(self->sock);
     int opt = 200;
     ec = zmq_setsockopt(self->sock, ZMQ_LINGER, &opt, sizeof(opt));
     EMSG(ec, "zmq_setsockopt");
-    // ec = zmq_bind(self->sock, "tcp://127.0.0.1:3986");
+    opt = 6;
+    ec = zmq_setsockopt(self->sock, ZMQ_SNDHWM, &opt, sizeof(opt));
+    EMSG(ec, "zmq_setsockopt");
+    ec = zmq_bind(self->sock, "tcp://127.0.0.1:3986");
     // ec = zmq_bind(self->sock, "tcp://enp0s31f6:3986");
-    ec = zmq_bind(self->sock, "tcp://129.129.68.138:3986");
-    EMSG(ec, "zmq_bind");
+    // ec = zmq_bind(self->sock, "tcp://129.129.68.138:3986");
+    ZMQ_NEGONERET(ec);
     self->timer_id = zmq_timers_add(poller->timer_poller, 1000, timer_cb_1, self);
     EMSG(ec, "zmq_timers_add");
     self->timer_in_use = 1;
