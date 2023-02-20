@@ -13,10 +13,12 @@ else()
 set(ZeroMQ_ROOT "/home/dominik/software/zeromq-4.3.4/install")
 endif()
 
+message("ZeroMQ_ROOT ${ZeroMQ_ROOT}")
+
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-find_path(ZMQ_INCLUDE_DIR zmq.h "${ZeroMQ_ROOT}/include")
-find_library(ZMQ_LIB libzmq.so "${ZeroMQ_ROOT}/lib")
+find_path(ZMQ_INCLUDE_DIR zmq.h "${ZeroMQ_ROOT}/include" NO_DEFAULT_PATH)
+find_library(ZMQ_LIB libzmq.so "${ZeroMQ_ROOT}/lib64" NO_DEFAULT_PATH)
 message("ZMQ_INCLUDE_DIR ${ZMQ_INCLUDE_DIR}")
 message("ZMQ_LIB ${ZMQ_LIB}")
 

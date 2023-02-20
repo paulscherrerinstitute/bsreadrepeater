@@ -104,7 +104,7 @@ extern "C" ERRT json_parse(char const *str, int n, GString **log) {
 }
 
 extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_main_header *header, GString **log) {
-    fprintf(stderr, "json_parse_main_header\n");
+    // fprintf(stderr, "json_parse_main_header\n");
     using rapidjson::Value;
     rapidjson::Document doc;
     try {
@@ -191,7 +191,7 @@ extern "C" ERRT json_parse_main_header(char const *str, int n, struct bsread_mai
 
 extern "C" ERRT json_parse_data_header(char const *str, int n, struct bsread_data_header *header, uint64_t now,
                                        struct channel_map *chnmap, struct bsread_main_header *mh, GString **log) {
-    fprintf(stderr, "json_parse_data_header\n");
+    // fprintf(stderr, "json_parse_data_header\n");
     using rapidjson::Value;
     rapidjson::Document doc;
     try {
@@ -321,6 +321,22 @@ extern "C" ERRT stats_source_to_json(struct stats_source_pub *stats, GString **o
     MEMF32(msg_emit_age_emv);
     MEMF32(msg_emit_age_min);
     MEMF32(msg_emit_age_max);
+    {
+        auto &al = doc.GetAllocator();
+        rapidjson::Value outa;
+        outa.SetArray();
+        for (uint n = 0; n < stats->out_count; n += 1) {
+            stats_source_out_pub *v = stats->out_stats + n;
+            rapidjson::Value out;
+            out.SetObject();
+            out.AddMember("sent_count", v->sent_count, al);
+            out.AddMember("sent_bytes", v->sent_bytes, al);
+            out.AddMember("eagain", v->eagain, al);
+            out.AddMember("eagain_multipart", v->eagain_multipart, al);
+            outa.PushBack(out, al);
+        }
+        doc.AddMember("outputs", outa, doc.GetAllocator());
+    }
     rapidjson::StringBuffer buf;
     rapidjson::Writer<rapidjson::StringBuffer, rapidjson::UTF8<char>, rapidjson::UTF8<char>, rapidjson::CrtAllocator, 2>
         writer(buf, 0);

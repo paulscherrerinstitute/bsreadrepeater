@@ -2,6 +2,7 @@
 #include <bsr_timed_events.h>
 #include <err.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <time.h>
 
 struct bsr_statistics {
@@ -27,6 +28,14 @@ ERRT bsr_statistics_cleanup(struct bsr_statistics *self);
 uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self);
 ERRT bsr_statistics_print_now(struct bsr_statistics *self);
 
+struct stats_source_out_pub {
+    char addr[64];
+    uint64_t sent_count;
+    uint64_t sent_bytes;
+    uint64_t eagain;
+    uint64_t eagain_multipart;
+};
+
 struct stats_source_pub {
     uint64_t received;
     uint64_t mhparsed;
@@ -51,4 +60,6 @@ struct stats_source_pub {
     float msg_emit_age_emv;
     float msg_emit_age_min;
     float msg_emit_age_max;
+    uint out_count;
+    struct stats_source_out_pub *out_stats;
 };

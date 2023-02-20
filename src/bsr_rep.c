@@ -280,7 +280,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             }
         } else if (nev == 0) {
         } else {
-            fprintf(stderr, "nev %3d\n", nev);
+            // fprintf(stderr, "nev %3d\n", nev);
         }
         for (int i = 0; i < nev; i += 1) {
             zmq_poller_event_t *ev = evs + i;

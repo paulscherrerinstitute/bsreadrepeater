@@ -372,10 +372,12 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     ec = json_parse_main_header(buf, n, header, &log);
                     if (ec != 0) {
                         self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 10) {
+                        if (self->json_parse_errors < 30) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "WARN  can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
-                                    self->addr_inp, self->mpmsgc, self->mpc, n, n, buf, hexbuf);
+                            fprintf(
+                                stderr,
+                                "WARN  (%" PRIu64 ")can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                                self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, n, n, buf, hexbuf);
                         }
                     } else {
                         if (FALSE && (self->mpmsgc % 300) == 0) {
@@ -475,10 +477,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                                                 self->bsread_main_header, &log);
                     if (ec != 0) {
                         self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 10) {
+                        if (self->json_parse_errors < 30) {
                             to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr, "WARN  can not parse data header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
-                                    self->addr_inp, self->mpmsgc, self->mpc, n, 32, mb, hexbuf);
+                            fprintf(stderr,
+                                    "WARN  (%" PRIu64 ")  can not parse data header  %s  (%" PRIu64
+                                    ", %d)  %d  %.*s  [%s]\n",
+                                    self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, n, 32, mb,
+                                    hexbuf);
                         }
                     } else {
                         self->dhparsed += 1;

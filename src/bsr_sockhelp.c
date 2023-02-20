@@ -46,6 +46,9 @@ ERRT set_basic_sock_opts(void *sock) {
     int64_t max_msg = MAX_MSG_SIZE;
     ec = zmq_setsockopt(sock, ZMQ_MAXMSGSIZE, &max_msg, sizeof(int64_t));
     NZRET(ec);
+    int handshake_ivl = 0;
+    ec = zmq_setsockopt(sock, ZMQ_HANDSHAKE_IVL, &handshake_ivl, sizeof(handshake_ivl));
+    NZRET(ec);
     return 0;
 }
 
@@ -132,7 +135,7 @@ ERRT set_pull_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    if (1) {
+    if (0) {
         ec = set_keepalive(sock);
         NZRET(ec);
     }
@@ -147,7 +150,7 @@ ERRT set_push_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    if (1) {
+    if (0) {
         ec = set_keepalive(sock);
         NZRET(ec);
     }

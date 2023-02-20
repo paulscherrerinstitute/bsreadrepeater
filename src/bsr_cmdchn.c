@@ -351,25 +351,6 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                         struct Handler *h2 = handler_list_find_by_input_addr_2(self->handler_list, sm.beg[1]);
                         if (h2 != NULL) {
                             struct bsr_chnhandler *h = &h2->handler.src;
-                            char s[256];
-                            // str = g_string_append(str, "+++++  channel map begin\n");
-                            // channel_map_str(h->chnmap, &str);
-                            // str = g_string_append(str, "-----  channel map end\n");
-                            GList *it2 = h->socks_out;
-                            while (it2 != NULL) {
-                                struct sockout *so = it2->data;
-                                snprintf(s, sizeof(s), "  Out: %s\n", so->addr);
-                                str = g_string_append(str, s);
-                                snprintf(s, sizeof(s), "    sent count %" PRIu64 "\n", so->sent_count);
-                                str = g_string_append(str, s);
-                                snprintf(s, sizeof(s), "    sent bytes %" PRIu64 "\n", so->sent_bytes);
-                                str = g_string_append(str, s);
-                                snprintf(s, sizeof(s), "    busy %" PRIu64 "\n", so->eagain);
-                                str = g_string_append(str, s);
-                                snprintf(s, sizeof(s), "    busy mp %" PRIu64 "\n", so->eagain_multipart);
-                                str = g_string_append(str, s);
-                                it2 = it2->next;
-                            }
                             struct stats_source_pub st = {0};
                             st.received = h->received;
                             st.mhparsed = h->mhparsed;
@@ -395,8 +376,32 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 h->msg_emit_age.min = INFINITY;
                                 h->msg_emit_age.max = -INFINITY;
                             }
+                            {
+                                uint n = g_list_length(h->socks_out);
+                                st.out_stats = malloc(n * sizeof(struct stats_source_out_pub));
+                                if (st.out_stats != NULL) {
+                                    st.out_count = n;
+                                    GList *it2 = h->socks_out;
+                                    uint i2 = 0;
+                                    while (it2 != NULL) {
+                                        struct sockout *so = it2->data;
+                                        struct stats_source_out_pub *p2 = st.out_stats + i2;
+                                        p2->sent_count = so->sent_count;
+                                        p2->sent_bytes = so->sent_bytes;
+                                        p2->eagain = so->eagain;
+                                        p2->eagain_multipart = so->eagain_multipart;
+                                        strncpy(p2->addr, so->addr, sizeof(p2->addr));
+                                        it2 = it2->next;
+                                        i2 += 1;
+                                    }
+                                }
+                            }
                             str = g_string_truncate(str, 0);
                             ec = stats_source_to_json(&st, &str);
+                            if (st.out_stats != NULL) {
+                                // TODO use cleanup
+                                free(st.out_stats);
+                            }
                             if (ec == -1) {
                                 fprintf(stderr, "stats json encode issue\n");
                             }
