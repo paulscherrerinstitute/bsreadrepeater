@@ -38,5 +38,8 @@ cd package
 tar -czf bsrep.tgz bsrep
 ls -ltr
 tar -tf bsrep.tgz
+
+curl -T bsrep.tgz https://data-api.psi.ch/distri/store/bsrep-amd64-rhel7.tgz
+
 cd $D0
 echo $D0
