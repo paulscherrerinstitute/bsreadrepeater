@@ -24,7 +24,7 @@ Input sources and output sockets can be added and removed at runtime.
 
 # Binaries for AMD64 - RHEL 7
 
-<https://data-api.psi.ch/distri/bsrep/index.html>
+<https://data-api.psi.ch/distri/bsrep-0.4.1-amd64-rhel7.tgz>
 
 
 # Run the application
