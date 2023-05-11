@@ -18,7 +18,15 @@
 #include <unistd.h>
 #include <zmq.h>
 
-char const *const BSREP_VERSION = "0.4.0";
+#ifndef BSREP_VERSION
+#define BSREP_VERSION UNKNOWN
+#endif
+
+#define STR1(x) #x
+#define XSTR1(x) STR1(x)
+char const *const BSREP_VERSION_CONST = XSTR1(BSREP_VERSION);
+#undef XSTR1
+#undef STR1
 
 int main_inner(int const argc, char const *const *argv) {
     int ec;
@@ -94,11 +102,11 @@ int main(int const argc, char const *const *argv) {
     int ec;
     if (argc == 2) {
         if (strcmp("--version", argv[1]) == 0) {
-            fprintf(stdout, "%s\n", BSREP_VERSION);
+            fprintf(stdout, "%s\n", BSREP_VERSION_CONST);
             return 0;
         }
     }
-    fprintf(stderr, "bsrep %s\n", BSREP_VERSION);
+    fprintf(stderr, "bsrep %s\n", BSREP_VERSION_CONST);
     {
         // For shared libs, make sure that we got dynamically linked against a compatible version.
         int maj, min, pat;

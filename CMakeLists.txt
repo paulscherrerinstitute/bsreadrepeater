@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.17.3)
 project(bsreadrepeater LANGUAGES C CXX)
 
+file(READ "version.txt" TMP)
+string(REGEX MATCH "([-.0-9]*)" RXM ${TMP})
+set(BSREP_VERSION ${RXM})
+message("BSREP_VERSION [${BSREP_VERSION}]")
+
 set(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

@@ -48,6 +48,7 @@ ${D0}/bsr_dummy_source.c
 set_property(TARGET bsrep PROPERTY C_STANDARD 11)
 set_property(TARGET bsrep PROPERTY CXX_STANDARD 20)
 target_compile_options(bsrep PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter)
+target_compile_options(bsrep PRIVATE "-DBSREP_VERSION=${BSREP_VERSION}")
 target_include_directories(bsrep PRIVATE "../include")
 target_include_directories(bsrep PRIVATE "../include/bsreadrepeater")
 target_include_directories(bsrep PRIVATE "../../../software/rapidjson/include")

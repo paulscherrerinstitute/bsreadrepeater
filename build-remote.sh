@@ -1,10 +1,11 @@
 #ssh sf-daqbuf-34 sudo yum install -y libpcap libpcap-devel
 #ssh sf-daqbuf-34 mkdir dtop
 
+VER=$(cat version.txt)
 EXE_NAME=bsreadrepeater
 TARGET_TRIPLE=amd64-rhel7
 BUILD_HOST=sf-daqbuf-34
-REMOTE_DIR=bsreadrepeater
+REMOTE_DIR="bsreadrepeater-$VER"
 
 ssh ${BUILD_HOST} mkdir -p ${REMOTE_DIR}
 
@@ -17,10 +18,10 @@ ssh ${BUILD_HOST} mkdir -p ${REMOTE_DIR}
 
 #ssh ${BUILD_HOST} sudo yum search cmake3
 
-rsync -rti include src CMakeLists.txt build-remote-2.sh ${BUILD_HOST}:${REMOTE_DIR}/
+rsync -rti include src CMakeLists.txt version.txt build-remote-2.sh ${BUILD_HOST}:${REMOTE_DIR}/
 if [ "$?" != "0" ]; then return -1; fi
 
-ssh ${BUILD_HOST} cd ${REMOTE_DIR} '&&' scl enable devtoolset-12 -- bash build-remote-2.sh
+ssh ${BUILD_HOST} cd ${REMOTE_DIR} '&&' scl enable devtoolset-12 -- bash build-remote-2.sh $VER
 if [ "$?" != "0" ]; then return -1; fi
 
 #ssh ${BUILD_HOST} cd ${REMOTE_DIR}\; pwd\; gcc -std=gnu11 -O3 -o dtop main.c -I. -lpcap
