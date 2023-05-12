@@ -29,16 +29,15 @@ Input sources and output sockets can be added and removed at runtime.
 
 # Run the application
 
-Start via the shell wrapper to use the packaged libzmq:
-
+Example:
 ```
-path/to/bsrep.sh <CMDADDR> [CMDFILE]
+./bsrep-0.4.1-amd64-rhel7/bsrep <COMMAND_SOCKET_ADDRESS> [STARTUP_COMMAND_FILE]
 ```
 
 Configuration is done by sending zmq messages to the command socket.
-The command socket is a REP socket on `CMDADDR`.
+The command socket is a REP socket on `COMMAND_SOCKET_ADDRESS`.
 
-An optional `CMDFILE` can be specified and those commands are applied at start.
+An optional `STARTUP_COMMAND_FILE` can be specified and those commands are applied at start.
 The command file contains one command per line.
 Example command file:
 ```
@@ -66,7 +65,7 @@ Example:
 
 # Commands
 
-All commands are accessible by sending a zmq message to the `REP` socket at `CMDADDR`.
+All commands are accessible by sending a zmq message to the `REP` socket at `COMMAND_SOCKET_ADDRESS`.
 
 
 ## Add a source
