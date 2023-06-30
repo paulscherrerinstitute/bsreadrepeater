@@ -24,14 +24,14 @@ Input sources and output sockets can be added and removed at runtime.
 
 # Binaries for AMD64 - RHEL 7
 
-<https://data-api.psi.ch/distri/bsrep-0.4.1-amd64-rhel7.tgz>
+<https://data-api.psi.ch/distri/bsrep-0.4.4-amd64-rhel7.tgz>
 
 
 # Run the application
 
 Example:
 ```
-./bsrep-0.4.1-amd64-rhel7/bsrep <COMMAND_SOCKET_ADDRESS> [STARTUP_COMMAND_FILE]
+./bsrep-0.4.4-amd64-rhel7/bsrep <COMMAND_SOCKET_ADDRESS> [STARTUP_COMMAND_FILE]
 ```
 
 Configuration is done by sending zmq messages to the command socket.
