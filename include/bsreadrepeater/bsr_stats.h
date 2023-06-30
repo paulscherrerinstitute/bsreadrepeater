@@ -21,6 +21,8 @@ struct bsr_statistics {
     float process_emv;
     uint64_t input_reopened;
     struct bsr_timed_events timed_events;
+    uint64_t evs_max;
+    uint64_t poll_evs_total;
 };
 
 ERRT bsr_statistics_init(struct bsr_statistics *self);

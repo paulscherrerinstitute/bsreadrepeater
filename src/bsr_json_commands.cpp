@@ -19,8 +19,14 @@ static ERRT extract_command(rapidjson::Document &doc, struct bsr_json_command *c
                 } else {
                     return -1;
                 }
-                cmd->inner.add_source.rcvhwm = 140;
-                cmd->inner.add_source.rcvbuf = 1024 * 128;
+                cmd->inner.add_source.msgmax = DEFAULT_MSG_MAX;
+                cmd->inner.add_source.rcvhwm = DEFAULT_HWM;
+                cmd->inner.add_source.rcvbuf = DEFAULT_RCVBUF;
+                if (doc.HasMember("msgmax")) {
+                    if (doc["msgmax"].IsInt()) {
+                        cmd->inner.add_source.msgmax = doc["msgmax"].GetInt();
+                    }
+                }
                 if (doc.HasMember("rcvhwm")) {
                     if (doc["rcvhwm"].IsInt()) {
                         cmd->inner.add_source.rcvhwm = doc["rcvhwm"].GetInt();
@@ -49,8 +55,8 @@ static ERRT extract_command(rapidjson::Document &doc, struct bsr_json_command *c
                 }
                 strncpy(cmd->inner.add_output.source, doc["source"].GetString(), SOURCE_ADDR_MAX);
                 strncpy(cmd->inner.add_output.output, doc["output"].GetString(), SOURCE_ADDR_MAX);
-                cmd->inner.add_output.sndhwm = 140;
-                cmd->inner.add_output.sndbuf = 1024 * 128;
+                cmd->inner.add_output.sndhwm = DEFAULT_HWM;
+                cmd->inner.add_output.sndbuf = DEFAULT_SNDBUF;
                 if (doc.HasMember("sndhwm")) {
                     if (doc["sndhwm"].IsInt()) {
                         cmd->inner.add_output.sndhwm = doc["sndhwm"].GetInt();
@@ -62,6 +68,7 @@ static ERRT extract_command(rapidjson::Document &doc, struct bsr_json_command *c
                     }
                 }
             } else if (string("remove-source") == kind_str) {
+                // TODO
             } else if (string("exit") == kind_str) {
             } else if (string("dummy-source-start") == kind_str) {
                 cmd->kind = DUMMY_SOURCE_START;

@@ -23,6 +23,8 @@ int64_t const IDLE_CHECK_DT_MS = 30000;
 int64_t const MAX_IDLE_MS = 120000;
 size_t const MAXSTR = 128;
 
+static uint const DO_TRACE = 0;
+
 ERRT cleanup_bsrep(struct bsrep *self) {
     int ec;
     fprintf(stderr, "cleanup_bsrep\n");
@@ -245,7 +247,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         struct timespec ts1;
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         int nev = zmq_poller_wait_all(poller.poller, evs, evsmax, 20);
-        if (FALSE) {
+        if (DO_TRACE) {
             fprintf(stderr, "TRACE  poll nev %d\n", nev);
         }
         self->polls_count += 1;
@@ -253,6 +255,9 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         clock_gettime(CLOCK_MONOTONIC, &ts2);
         struct timespec ts_rt_poll_done;
         clock_gettime(CLOCK_REALTIME, &ts_rt_poll_done);
+        if (nev >= evsmax) {
+            self->stats.evs_max += 1;
+        }
         {
             struct bsr_statistics *stats = &self->stats;
             float const k = 0.05f;
@@ -260,10 +265,6 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
             float d1 = (float)dt - stats->poll_wait_ema;
             stats->poll_wait_ema += k * d1;
             stats->poll_wait_emv = (1.0f - k) * (stats->poll_wait_emv + k * d1 * d1);
-            if (FALSE) {
-                fprintf(stderr, "d1 %7.0f  dt %8ld  ema %5.0f  emv %6.0f\n", d1, dt, stats->poll_wait_ema,
-                        sqrtf(stats->poll_wait_emv));
-            }
         }
         if (zmq_timers_timeout(poller.timer_poller) <= 0) {
             ec = zmq_timers_execute(poller.timer_poller);
@@ -278,8 +279,12 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
                 fprintf(stderr, "Poller error: %s\n", zmq_strerror(errno));
                 return -1;
             }
+        } else if (nev < 0) {
+            fprintf(stderr, "Unknown negative poller return code: %s\n", zmq_strerror(errno));
+            return -1;
         } else if (nev == 0) {
         } else {
+            self->stats.poll_evs_total += nev;
             // fprintf(stderr, "nev %3d\n", nev);
         }
         for (int i = 0; i < nev; i += 1) {
@@ -323,7 +328,7 @@ static ERRT bsrep_run_inner(struct bsrep *self) {
         if (bsr_statistics_ms_since_last_print(&self->stats) > GLOBAL_STATS_PRINT_DT_MS) {
             bsr_statistics_print_now(&self->stats);
         }
-        while (TRUE) {
+        while (1) {
             uint64_t *key;
             struct timed_event *ev;
             bsr_timed_events_most_recent_key(&self->stats.timed_events, ts3, &key, &ev);

@@ -100,11 +100,12 @@ void cleanup_struct_sockout_ptr(struct sockout **k) {
 }
 
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char const *addr_inp,
-                         int inp_rcvhwm, int inp_rcvbuf, struct bsr_statistics *stats) {
+                         int msgmax, int inp_rcvhwm, int inp_rcvbuf, struct bsr_statistics *stats) {
     int ec;
     self->sock_inp = NULL;
     self->poller = poller;
     self->user_data = user_data;
+    self->inp_msgmax = msgmax;
     self->inp_rcvhwm = inp_rcvhwm;
     self->inp_rcvbuf = inp_rcvbuf;
     strncpy(self->addr_inp, addr_inp, ADDR_CAP);
@@ -112,6 +113,7 @@ ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller,
     self->state = RECV;
     self->more_last = 0;
     self->mpc = 0;
+    self->do_parse_header = 0;
     self->mpmsgc = 0;
     self->mpmsglen = 0;
     self->printed_compr_unsup = 0;
@@ -169,7 +171,7 @@ ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self) {
     int ec;
     self->sock_inp = zmq_socket(self->poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
-    ec = set_pull_sock_opts(self->sock_inp, self->inp_rcvhwm, self->inp_rcvbuf);
+    ec = set_pull_sock_opts(self->sock_inp, self->inp_msgmax, self->inp_rcvhwm, self->inp_rcvbuf);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
     ZMQ_NEGONERET(ec);
@@ -193,7 +195,7 @@ ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self) {
     self->sock_inp = NULL;
     self->sock_inp = zmq_socket(self->poller->ctx, ZMQ_PULL);
     ZMQ_NULLRET(self->sock_inp);
-    ec = set_pull_sock_opts(self->sock_inp, self->inp_rcvhwm, self->inp_rcvbuf);
+    ec = set_pull_sock_opts(self->sock_inp, self->inp_msgmax, self->inp_rcvhwm, self->inp_rcvbuf);
     NZRET(ec);
     ec = zmq_connect(self->sock_inp, self->addr_inp);
     ZMQ_NEGONERET(ec);
@@ -305,6 +307,135 @@ void cleanup_gstring(GString **k) {
     }
 }
 
+ERRT bsr_chnhandler_parse_header_m(struct bsr_chnhandler *self, int buflen, char *buf, int nhexbuf, char *hexbuf) {
+    int ec;
+    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
+    struct bsread_main_header *header = self->bsread_main_header;
+    ec = json_parse_main_header(buf, buflen, header, &log);
+    if (ec != 0) {
+        self->json_parse_errors += 1;
+        if (self->json_parse_errors < 30) {
+            to_hex(hexbuf, (uint8_t *)buf, nhexbuf);
+            fprintf(stderr, "WARN  (%" PRIu64 ")can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                    self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, buflen, buflen, buf, hexbuf);
+        }
+    } else {
+        if (FALSE && (self->mpmsgc % 300) == 0) {
+            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n", self->addr_inp,
+                    self->mpmsgc, self->mpc, header->compr, log->str);
+        }
+        self->mhparsed += 1;
+        self->dh_compr = header->compr;
+        self->ts_main_header_last = header->timestamp;
+        if (0) {
+            // TODO this was previously used to analyze the event latency
+            struct timespec ts_rt_poll_done;
+            int64_t ts1 = (int64_t)ts_rt_poll_done.tv_sec * 1000000 + (int64_t)ts_rt_poll_done.tv_nsec / 1000;
+            int64_t ts2 = header->timestamp / 1000;
+            int64_t dt = ts2 - ts1;
+            if (dt < -1000000 || dt > 1000000) {
+                self->timestamp_out_of_range_count += 1;
+                if (FALSE) {
+                    self->block_current_mpm = 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+ERRT bsr_chnhandler_parse_header_d(struct bsr_chnhandler *self, int buflen, char *buf, int nhexbuf, char *hexbuf,
+                                   struct timespec tspoll) {
+    int ec;
+    char const *mb = buf;
+    char const *jsstr = buf;
+    int jslen = buflen;
+    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
+    if (self->dh_compr == 1) {
+        self->data_header_bslz4_count += 1;
+        uint64_t aa;
+        uint32_t bb;
+        {
+            char *p = (char *)&aa;
+            p[0] = mb[7];
+            p[1] = mb[6];
+            p[2] = mb[5];
+            p[3] = mb[4];
+            p[4] = mb[3];
+            p[5] = mb[2];
+            p[6] = mb[1];
+            p[7] = mb[0];
+        }
+        {
+            char *p = (char *)&bb;
+            p[0] = mb[11];
+            p[1] = mb[10];
+            p[2] = mb[9];
+            p[3] = mb[8];
+        }
+        // fprintf(stderr, "bslz4  aa %" PRIu64 "  bb %" PRIu32 "\n", aa, bb);
+        // TODO also get the element size?? or is that part of the deshuffle routine? Decouple!!
+        // TODO decouple bit shuffling and lz4 in order to use safe lz4.
+        // TODO make sure before decompression that our buffer is large enough.
+        int64_t bsn = bshuf_decompress_lz4(mb + 12, self->buf, buflen - 12, 1, 0);
+        // fprintf(stderr, "bslz4  bsn %" PRIi64 "\n", bsn);
+        if (bsn < 0) {
+            if (self->printed_compr_unsup < 10) {
+                fprintf(stderr, "WARN  data header bitshuffle decompress error %" PRId64 "\n", bsn);
+                self->printed_compr_unsup += 1;
+            }
+        } else {
+            jsstr = self->buf;
+            jslen = aa;
+            self->dhdecompr += 1;
+        }
+    }
+    if (self->dh_compr == 2) {
+        self->data_header_lz4_count += 1;
+        uint32_t b;
+        {
+            char *p = (char *)&b;
+            p[0] = mb[3];
+            p[1] = mb[2];
+            p[2] = mb[1];
+            p[3] = mb[0];
+        }
+        ec = LZ4_decompress_safe(mb + 4, self->buf, buflen - 4, DECOMP_BUF_MAX);
+        if (ec < 0) {
+            if (self->printed_compr_unsup < 10) {
+                fprintf(stderr, "WARN  data header lz4 decompress error %d  len %d\n", ec, b);
+                self->printed_compr_unsup += 1;
+            }
+        } else {
+            jsstr = self->buf;
+            jslen = b;
+            self->dhdecompr += 1;
+        }
+    }
+    struct channel_map *chnmap = NULL;
+    if (TRUE || (tspoll.tv_sec >= self->last_remember_channels.tv_sec + 2)) {
+        self->last_remember_channels = tspoll;
+        chnmap = self->chnmap;
+    }
+    uint64_t tspoll_mu = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
+    ec = json_parse_data_header(jsstr, jslen, &self->data_header, tspoll_mu, chnmap, self->bsread_main_header, &log);
+    if (ec != 0) {
+        self->json_parse_errors += 1;
+        if (self->json_parse_errors < 30) {
+            to_hex(hexbuf, (uint8_t *)buf, nhexbuf);
+            fprintf(stderr, "WARN  (%" PRIu64 ")  can not parse data header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
+                    self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, buflen, 32, mb, hexbuf);
+        }
+    } else {
+        self->dhparsed += 1;
+        if (FALSE && (self->mpmsgc % 300) == 0) {
+            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\n%s\n-----\n", self->addr_inp, self->mpmsgc,
+                    self->mpc, log->str);
+        }
+    }
+    return 0;
+}
+
 ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, struct timespec tspoll,
                                  struct timespec ts_rt_poll_done) {
     int ec;
@@ -313,8 +444,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
             fprintf(stderr, "ERROR  RECV but not POLLIN\n");
             return -1;
         }
-        int64_t max_msg_size = 0;
         if (0) {
+            int64_t max_msg_size = 0;
             size_t vl = sizeof(int64_t);
             ec = zmq_getsockopt(self->sock_inp, ZMQ_MAXMSGSIZE, &max_msg_size, &vl);
             NZRET(ec);
@@ -367,130 +498,13 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                 }
                 if (self->mpc == 0) {
                     self->dh_compr = 0;
-                    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
-                    struct bsread_main_header *header = self->bsread_main_header;
-                    ec = json_parse_main_header(buf, n, header, &log);
-                    if (ec != 0) {
-                        self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 30) {
-                            to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(
-                                stderr,
-                                "WARN  (%" PRIu64 ")can not parse main header  %s  (%" PRIu64 ", %d)  %d  %.*s  [%s]\n",
-                                self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, n, n, buf, hexbuf);
-                        }
-                    } else {
-                        if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\ncompr: %d\n%s\n-----\n",
-                                    self->addr_inp, self->mpmsgc, self->mpc, header->compr, log->str);
-                        }
-                        self->mhparsed += 1;
-                        self->dh_compr = header->compr;
-                        self->ts_main_header_last = header->timestamp;
-                        {
-                            int64_t ts1 =
-                                (int64_t)ts_rt_poll_done.tv_sec * 1000000 + (int64_t)ts_rt_poll_done.tv_nsec / 1000;
-                            int64_t ts2 = header->timestamp / 1000;
-                            int64_t dt = ts2 - ts1;
-                            if (dt < -1000000 || dt > 1000000) {
-                                self->timestamp_out_of_range_count += 1;
-                                if (FALSE) {
-                                    self->block_current_mpm = 1;
-                                }
-                            }
-                        }
+                    if (self->do_parse_header) {
+                        ec = bsr_chnhandler_parse_header_m(self, n, buf, NHEXBUF, hexbuf);
                     }
                 }
                 if (self->mpc == 1) {
-                    char const *mb = (char *)zmq_msg_data(&msgin);
-                    char const *jsstr = mb;
-                    int jslen = n;
-                    GString *log __attribute__((cleanup(cleanup_gstring))) = g_string_new("");
-                    if (self->dh_compr == 1) {
-                        self->data_header_bslz4_count += 1;
-                        uint64_t aa;
-                        uint32_t bb;
-                        {
-                            char *p = (char *)&aa;
-                            p[0] = mb[7];
-                            p[1] = mb[6];
-                            p[2] = mb[5];
-                            p[3] = mb[4];
-                            p[4] = mb[3];
-                            p[5] = mb[2];
-                            p[6] = mb[1];
-                            p[7] = mb[0];
-                        }
-                        {
-                            char *p = (char *)&bb;
-                            p[0] = mb[11];
-                            p[1] = mb[10];
-                            p[2] = mb[9];
-                            p[3] = mb[8];
-                        }
-                        // fprintf(stderr, "bslz4  aa %" PRIu64 "  bb %" PRIu32 "\n", aa, bb);
-                        // TODO also get the element size?? or is that part of the deshuffle routine? Decouple!!
-                        // TODO decouple bit shuffling and lz4 in order to use safe lz4.
-                        // TODO make sure before decompression that our buffer is large enough.
-                        int64_t bsn = bshuf_decompress_lz4(mb + 12, self->buf, n - 12, 1, 0);
-                        // fprintf(stderr, "bslz4  bsn %" PRIi64 "\n", bsn);
-                        if (bsn < 0) {
-                            if (self->printed_compr_unsup < 10) {
-                                fprintf(stderr, "WARN  data header bitshuffle decompress error %" PRId64 "\n", bsn);
-                                self->printed_compr_unsup += 1;
-                            }
-                        } else {
-                            jsstr = self->buf;
-                            jslen = aa;
-                            self->dhdecompr += 1;
-                        }
-                    }
-                    if (self->dh_compr == 2) {
-                        self->data_header_lz4_count += 1;
-                        uint32_t b;
-                        {
-                            char *p = (char *)&b;
-                            p[0] = mb[3];
-                            p[1] = mb[2];
-                            p[2] = mb[1];
-                            p[3] = mb[0];
-                        }
-                        ec = LZ4_decompress_safe(mb + 4, self->buf, n - 4, DECOMP_BUF_MAX);
-                        if (ec < 0) {
-                            if (self->printed_compr_unsup < 10) {
-                                fprintf(stderr, "WARN  data header lz4 decompress error %d  len %d\n", ec, b);
-                                self->printed_compr_unsup += 1;
-                            }
-                        } else {
-                            jsstr = self->buf;
-                            jslen = b;
-                            self->dhdecompr += 1;
-                        }
-                    }
-                    struct channel_map *chnmap = NULL;
-                    if (TRUE || (tspoll.tv_sec >= self->last_remember_channels.tv_sec + 2)) {
-                        self->last_remember_channels = tspoll;
-                        chnmap = self->chnmap;
-                    }
-                    uint64_t tspoll_mu = tspoll.tv_sec * 1000000 + tspoll.tv_nsec / 1000;
-                    ec = json_parse_data_header(jsstr, jslen, &self->data_header, tspoll_mu, chnmap,
-                                                self->bsread_main_header, &log);
-                    if (ec != 0) {
-                        self->json_parse_errors += 1;
-                        if (self->json_parse_errors < 30) {
-                            to_hex(hexbuf, (uint8_t *)buf, NHEXBUF);
-                            fprintf(stderr,
-                                    "WARN  (%" PRIu64 ")  can not parse data header  %s  (%" PRIu64
-                                    ", %d)  %d  %.*s  [%s]\n",
-                                    self->json_parse_errors, self->addr_inp, self->mpmsgc, self->mpc, n, 32, mb,
-                                    hexbuf);
-                        }
-                    } else {
-                        self->dhparsed += 1;
-                        if (FALSE && (self->mpmsgc % 300) == 0) {
-                            fprintf(stderr, "DEBUG  GOOD PARSE     %s  (%" PRIu64 ", %d)\n%s\n-----\n", self->addr_inp,
-                                    self->mpmsgc, self->mpc, log->str);
-                        }
+                    if (self->do_parse_header) {
+                        ec = bsr_chnhandler_parse_header_d(self, n, buf, NHEXBUF, hexbuf, tspoll);
                     }
                 }
                 if (self->mpmsgc > 0 && self->block_current_mpm == 0) {
@@ -551,10 +565,8 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     }
                 }
                 if (more == 0) {
-                    {
-                        if ((uint32_t)self->mpc != 1 + 2 * self->data_header.channel_count) {
-                            self->unexpected_frames_count += 1;
-                        }
+                    if ((uint32_t)self->mpc != 1 + 2 * self->data_header.channel_count) {
+                        self->unexpected_frames_count += 1;
                     }
                     self->block_current_mpm = 0;
                     self->mpmsgc += 1;
@@ -571,7 +583,7 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                             self->throttling = 0;
                         }
                     } else if (self->msg_dt_ema.ema < 0.0090) {
-                        self->throttling = 1;
+                        // self->throttling = 1;
                     }
                 }
                 self->more_last = more;

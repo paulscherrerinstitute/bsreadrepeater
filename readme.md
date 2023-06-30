@@ -70,23 +70,31 @@ All commands are accessible by sending a zmq message to the `REP` socket at `COM
 
 ## Add a source
 
-`add-source,SOURCE` where `SOURCE` is e.g. "tcp://source.psi.ch:9999".
+`add-source,<SOURCE>` where `<SOURCE>` is e.g. "tcp://source.psi.ch:9999".
 
 This lets the repeater maintain a connection to the source.
 Messages will be always pulled from the source, even when no outputs are created yet
 or none of the outputs has a connected client.
 
+```
+{ "kind": "add-source", "source": "<SOURCE>" }
+```
+
+#### For images, increase max-msg-size
+
+By default, the maximum incoming message size is limited to 20 MB.
+Images could require a larger message size.
+This can be changed via the `msgmax` parameter:
+```
+{ "kind": "add-source", "source": "<SOURCE>", "msgmax": 60000000 }
+```
+
 
 ## Remove a source
 
-`remove-source,SOURCE`
+`remove-source,<SOURCE>`
 
 Removes the given source as well as all associated outputs.
-
-Also possible as single-line json:
-```
-{ "kind": "add-source", "source": "SOURCE" }
-```
 
 
 ## Add output to a source

@@ -2,9 +2,14 @@
 #include <err.h>
 
 #define SOURCE_ADDR_MAX (128)
+#define DEFAULT_MSG_MAX (1024 * 1024 * 20)
+#define DEFAULT_HWM (200)
+#define DEFAULT_RCVBUF (1024 * 1024 * 2)
+#define DEFAULT_SNDBUF (1024 * 1024 * 2)
 
 struct command_add_source {
     char source[SOURCE_ADDR_MAX];
+    int msgmax;
     int rcvhwm;
     int rcvbuf;
 };

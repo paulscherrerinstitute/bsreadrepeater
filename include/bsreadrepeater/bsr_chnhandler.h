@@ -27,11 +27,13 @@ struct bsr_chnhandler {
     struct bsr_poller *poller;
     void *user_data;
     char addr_inp[ADDR_CAP];
+    int inp_msgmax;
     int inp_rcvhwm;
     int inp_rcvbuf;
     int state;
     int more_last;
     int mpc;
+    int do_parse_header;
     uint64_t mpmsgc;
     uint32_t mpmsglen;
     void *sock_inp;
@@ -77,7 +79,7 @@ struct bsr_chnhandler {
 
 ERRT cleanup_bsr_chnhandler(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_init(struct bsr_chnhandler *self, struct bsr_poller *poller, void *user_data, char const *addr_inp,
-                         int hwm, int buf, struct bsr_statistics *stats);
+                         int msgmax, int rcvhwm, int rcvbuf, struct bsr_statistics *stats);
 ERRT bsr_chnhandler_connect(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_reopen_input(struct bsr_chnhandler *self);
 ERRT bsr_chnhandler_disable_input(struct bsr_chnhandler *self);

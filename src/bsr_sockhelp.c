@@ -2,8 +2,6 @@
 #include <err.h>
 #include <zmq.h>
 
-static size_t MAX_MSG_SIZE = 1024 * 1024 * 20;
-
 ERRT cleanup_zmq_ctx(void **self) {
     int ec;
     if (self != NULL) {
@@ -43,12 +41,18 @@ ERRT set_basic_sock_opts(void *sock) {
     // TODO choose max size depending on (expected) channel types.
     // We can't be sure about the channels that a source is supposed to
     // contain, so this requires domain knowledge.
-    int64_t max_msg = MAX_MSG_SIZE;
+    int64_t max_msg = 1024 * 1024 * 20;
     ec = zmq_setsockopt(sock, ZMQ_MAXMSGSIZE, &max_msg, sizeof(int64_t));
     NZRET(ec);
     int handshake_ivl = 0;
     ec = zmq_setsockopt(sock, ZMQ_HANDSHAKE_IVL, &handshake_ivl, sizeof(handshake_ivl));
     NZRET(ec);
+    // int rcvhwm = 200;
+    // ec = zmq_setsockopt(sock, ZMQ_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    // NZRET(ec);
+    // int sndhwm = 200;
+    // ec = zmq_setsockopt(sock, ZMQ_SNDHWM, &sndhwm, sizeof(sndhwm));
+    // NZRET(ec);
     return 0;
 }
 
@@ -57,6 +61,16 @@ ERRT set_linger(void *sock, int linger) {
     int val = linger;
     int len = sizeof(val);
     ec = zmq_setsockopt(sock, ZMQ_LINGER, &val, len);
+    if (ec == -1) {
+        return -1;
+    }
+    return 0;
+}
+
+ERRT set_msgmax(void *sock, int msgmax) {
+    int64_t msgmax64 = msgmax;
+    int ec;
+    ec = zmq_setsockopt(sock, ZMQ_MAXMSGSIZE, &msgmax64, sizeof(msgmax64));
     if (ec == -1) {
         return -1;
     }
@@ -131,7 +145,7 @@ static ERRT set_keepalive(void *sock) {
     return 0;
 }
 
-ERRT set_pull_sock_opts(void *sock, int hwm, int buf) {
+ERRT set_pull_sock_opts(void *sock, int msgmax, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
@@ -139,6 +153,8 @@ ERRT set_pull_sock_opts(void *sock, int hwm, int buf) {
         ec = set_keepalive(sock);
         NZRET(ec);
     }
+    ec = set_msgmax(sock, msgmax);
+    NZRET(ec);
     ec = set_rcvhwm(sock, hwm);
     NZRET(ec);
     ec = set_rcvbuf(sock, buf);

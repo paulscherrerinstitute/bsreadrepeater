@@ -1,5 +1,6 @@
 #include <bsr_stats.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 
 ERRT bsr_statistics_init(struct bsr_statistics *self) {
@@ -13,6 +14,8 @@ ERRT bsr_statistics_init(struct bsr_statistics *self) {
     self->poll_wait_ema = 0.0;
     self->poll_wait_emv = 0.0;
     self->input_reopened = 0;
+    self->evs_max = 0;
+    self->poll_evs_total = 0;
     // TODO add cleanup logic. Currently only used once.
     ec = bsr_timed_events_init(&self->timed_events);
     NZRET(ec);
@@ -39,10 +42,11 @@ uint32_t bsr_statistics_ms_since_last_print(struct bsr_statistics *self) {
 ERRT bsr_statistics_print_now(struct bsr_statistics *self) {
     struct bsr_statistics *st = self;
     fprintf(stderr,
-            "received %" PRIu64 "  sent %" PRIu64 "  busy %" PRIu64 "  busy-in-mp %" PRIu64
-            "  recv_buf_too_small %" PRIu64 "  recv bytes %" PRIu64 "  sent bytes %" PRIu64 "\n",
+            "recvm %" PRIu64 "  sendm %" PRIu64 "  busy %" PRIu64 "  busymp %" PRIu64 "  recv_buf_too_small %" PRIu64
+            "  recvb %" PRIu64 "  sendb %" PRIu64 "  evsmax %" PRIu64
+            "  pollwa %5.0f  pollwv %6.0f  pollevstot %" PRIu64 "\n",
             st->received, st->sentok, st->eagain, st->eagain_multipart, st->recv_buf_too_small, st->recv_bytes,
-            st->sent_bytes);
+            st->sent_bytes, self->evs_max, st->poll_wait_ema, sqrtf(st->poll_wait_emv), self->poll_evs_total);
     clock_gettime(CLOCK_MONOTONIC, &self->last_print_ts);
     return 0;
 }

@@ -239,7 +239,7 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                 buf[n] = 0;
                 fprintf(stderr, "Received command: %d [%.*s]\n", n, n, buf);
                 if (n > 1 && buf[0] == '{') {
-                    struct bsr_json_command cmd;
+                    struct bsr_json_command cmd = {0};
                     ec = parse_json_command((char const *)buf, n, &cmd);
                     if (ec != 0) {
                         fprintf(stderr, "JSON command parse error\n");
@@ -259,8 +259,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                                 handler = malloc(sizeof(struct Handler));
                                 NULLRET(handler);
                                 handler->kind = SourceHandler;
-                                ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, src, cmd2.rcvhwm,
-                                                         cmd2.rcvbuf, self->stats);
+                                ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, src, cmd2.msgmax,
+                                                         cmd2.rcvhwm, cmd2.rcvbuf, self->stats);
                                 if (ec != 0) {
                                     fprintf(stderr, "ERROR can not initialize handler for [%s]\n", src);
                                 } else {
@@ -449,8 +449,8 @@ ERRT bsr_cmdchn_handle_event(struct bsr_cmdchn *self, struct bsr_poller *poller,
                             handler = malloc(sizeof(struct Handler));
                             NULLRET(handler);
                             handler->kind = SourceHandler;
-                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], 200,
-                                                     1024 * 1024 * 20, self->stats);
+                            ec = bsr_chnhandler_init(&handler->handler.src, poller, handler, sm.beg[1], DEFAULT_MSG_MAX,
+                                                     DEFAULT_HWM, 1024 * 1024 * 2, self->stats);
                             if (ec != 0) {
                                 fprintf(stderr, "ERROR can not initialize handler for [%s]\n", sm.beg[1]);
                             } else {
