@@ -15,6 +15,7 @@ struct sockout {
     int sndbuf;
     char addr[ADDR_CAP];
     int in_multipart;
+    int block_current_multipart;
     uint64_t sent_count;
     uint64_t sent_bytes;
     uint64_t eagain;

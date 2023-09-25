@@ -233,6 +233,7 @@ ERRT bsr_chnhandler_add_out(struct bsr_chnhandler *self, char *addr, int sndhwm,
     strncpy(data->addr, addr, ADDR_CAP);
     data->addr[ADDR_CAP - 1] = 0;
     data->in_multipart = 0;
+    data->block_current_multipart = 0;
     data->sent_count = 0;
     data->sent_bytes = 0;
     data->eagain = 0;
@@ -511,54 +512,59 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     GList *it = self->socks_out;
                     while (it != NULL) {
                         struct sockout *so = it->data;
-                        zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
-                        ec = zmq_msg_init(&msgout);
-                        ZMQ_NEGONERET(ec);
-                        ec = zmq_msg_copy(&msgout, &msgin);
-                        ZMQ_NEGONERET(ec);
-                        int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
-                        if (more == 0) {
-                            // Track the age at the moment when we hand off to libzmq
-                            // in all cases, even when our attempted hand-off failed.
-                            struct timespec time;
-                            clock_gettime(CLOCK_REALTIME, &time);
-                            int64_t ts2 = ((int64_t)(time.tv_sec * 1000000)) + ((int64_t)(time.tv_nsec / 1000));
-                            int64_t ts1 = (int64_t)(self->ts_main_header_last / 1000);
-                            int64_t dt = ts2 - ts1;
-                            float age = ((float)dt) * 1e-6;
-                            bsr_ema_ext_update(&self->msg_emit_age, age);
-                        }
-                        if (n2 == -1) {
-                            if (errno == EAGAIN) {
-                                // Output can't keep up. Drop message.
-                                if (so->in_multipart == 1) {
-                                    so->eagain_multipart += 1;
-                                    self->eagain_multipart += 1;
-                                    self->stats->eagain_multipart += 1;
-                                } else {
-                                    so->eagain += 1;
-                                    self->eagain += 1;
-                                    self->stats->eagain += 1;
-                                }
-                            } else {
-                                fprintf(stderr, "ERROR  chnhandler send error: %d %s\n", errno, zmq_strerror(errno));
-                                return -1;
-                            }
-                        } else if (n2 != n) {
-                            fprintf(stderr, "ERROR  chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
-                            return -1;
+                        if (so->block_current_multipart) {
                         } else {
-                            // Message is accepted by zmq.
-                            so->sent_count += 1;
-                            so->sent_bytes += n2;
-                            self->sentok += 1;
-                            self->sent_bytes += n2;
-                            self->stats->sentok += 1;
-                            self->stats->sent_bytes += n2;
-                            if (more == 1) {
-                                so->in_multipart = 1;
+                            zmq_msg_t msgout __attribute__((cleanup(cleanup_zmq_msg)));
+                            ec = zmq_msg_init(&msgout);
+                            ZMQ_NEGONERET(ec);
+                            ec = zmq_msg_copy(&msgout, &msgin);
+                            ZMQ_NEGONERET(ec);
+                            int n2 = zmq_msg_send(&msgout, so->sock, sndflags);
+                            if (more == 0) {
+                                // Track the age at the moment when we hand off to libzmq
+                                // in all cases, even when our attempted hand-off failed.
+                                struct timespec time;
+                                clock_gettime(CLOCK_REALTIME, &time);
+                                int64_t ts2 = ((int64_t)(time.tv_sec * 1000000)) + ((int64_t)(time.tv_nsec / 1000));
+                                int64_t ts1 = (int64_t)(self->ts_main_header_last / 1000);
+                                int64_t dt = ts2 - ts1;
+                                float age = ((float)dt) * 1e-6;
+                                bsr_ema_ext_update(&self->msg_emit_age, age);
+                            }
+                            if (n2 == -1) {
+                                if (errno == EAGAIN) {
+                                    so->block_current_multipart = 1;
+                                    // Output can't keep up. Drop message.
+                                    if (so->in_multipart == 1) {
+                                        so->eagain_multipart += 1;
+                                        self->eagain_multipart += 1;
+                                        self->stats->eagain_multipart += 1;
+                                    } else {
+                                        so->eagain += 1;
+                                        self->eagain += 1;
+                                        self->stats->eagain += 1;
+                                    }
+                                } else {
+                                    fprintf(stderr, "ERROR  chnhandler send error: %d %s\n", errno,
+                                            zmq_strerror(errno));
+                                    return -1;
+                                }
+                            } else if (n2 != n) {
+                                fprintf(stderr, "ERROR  chnhandler zmq_send byte mismatch %d vs %d\n", n2, n);
+                                return -1;
                             } else {
-                                so->in_multipart = 0;
+                                // Message is accepted by zmq.
+                                so->sent_count += 1;
+                                so->sent_bytes += n2;
+                                self->sentok += 1;
+                                self->sent_bytes += n2;
+                                self->stats->sentok += 1;
+                                self->stats->sent_bytes += n2;
+                                if (more == 1) {
+                                    so->in_multipart = 1;
+                                } else {
+                                    so->in_multipart = 0;
+                                }
                             }
                         }
                         it = it->next;
@@ -570,6 +576,14 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     }
                     self->block_current_mpm = 0;
                     self->mpmsgc += 1;
+                    {
+                        GList *it = self->socks_out;
+                        while (it != NULL) {
+                            struct sockout *so = it->data;
+                            so->block_current_multipart = 0;
+                            it = it->next;
+                        }
+                    }
                     ec = bsr_ema_update(&self->mpmsglen_ema, (float)self->mpmsglen);
                     NZRET(ec);
                     self->mpmsglen = 0;
@@ -613,6 +627,10 @@ ERRT bsr_chnhandler_handle_event(struct bsr_chnhandler *self, short events, stru
                     }
                 }
                 do_recv = 0;
+            }
+            if (self->mpc > 500) {
+                fprintf(stderr, "ERROR  unexpected large number of parts in multipart message\n");
+                return -1;
             }
         }
     } else {

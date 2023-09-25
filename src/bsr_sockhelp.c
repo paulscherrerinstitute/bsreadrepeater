@@ -127,19 +127,26 @@ static ERRT set_keepalive(void *sock) {
     val = 120;
     ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_IDLE, &val, len);
     ZMQ_NEGONERET(ec);
-    val = 30;
+    val = 25;
     ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_INTVL, &val, len);
     ZMQ_NEGONERET(ec);
-    val = 4;
+    val = 6;
     ec = zmq_setsockopt(sock, ZMQ_TCP_KEEPALIVE_CNT, &val, len);
     ZMQ_NEGONERET(ec);
-    val = 10000;
+    return 0;
+}
+
+static ERRT set_heartbeat(void *sock) {
+    int ec;
+    int val;
+    int len = sizeof(val);
+    val = 25000;
     ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_IVL, &val, len);
     ZMQ_NEGONERET(ec);
-    val = 60000;
+    val = 120000;
     ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_TIMEOUT, &val, len);
     ZMQ_NEGONERET(ec);
-    val = 60000;
+    val = 120000;
     ec = zmq_setsockopt(sock, ZMQ_HEARTBEAT_TTL, &val, len);
     ZMQ_NEGONERET(ec);
     return 0;
@@ -149,8 +156,12 @@ ERRT set_pull_sock_opts(void *sock, int msgmax, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    if (0) {
+    if (1) {
         ec = set_keepalive(sock);
+        NZRET(ec);
+    }
+    if (0) {
+        ec = set_heartbeat(sock);
         NZRET(ec);
     }
     ec = set_msgmax(sock, msgmax);
@@ -166,8 +177,12 @@ ERRT set_push_sock_opts(void *sock, int hwm, int buf) {
     int ec;
     ec = set_basic_sock_opts(sock);
     NZRET(ec);
-    if (0) {
+    if (1) {
         ec = set_keepalive(sock);
+        NZRET(ec);
+    }
+    if (0) {
+        ec = set_heartbeat(sock);
         NZRET(ec);
     }
     ec = set_sndhwm(sock, hwm);
